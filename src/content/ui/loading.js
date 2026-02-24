@@ -103,6 +103,7 @@ window.YTPresenter = window.YTPresenter || {};
         const stageLabels = {
           connecting: 'Connecting to Ollama',
           model_check: 'Loading model',
+          arc_analysis: 'Analyzing narrative arc',
           generating: 'Generating',
           processing: 'Processing with AI',
         };

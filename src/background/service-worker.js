@@ -1,5 +1,5 @@
 import { checkHealth, checkModel, generate, pickBestModel } from './ollama.js';
-import { buildRestructureRequest, splitIntoSentenceChunks, buildChapterRequest, splitChapterIntoSubChunks } from './prompts.js';
+import { buildRestructureRequest, splitIntoSentenceChunks, buildChapterRequest, splitChapterIntoSubChunks, condenseTranscript, buildArcRequest, buildArcContext } from './prompts.js';
 
 const DEFAULT_MODEL = 'qwen2.5:7b';
 
@@ -36,6 +36,65 @@ function makeTokenHandler(sendProgress, chunkIndex, totalChunks) {
   };
 }
 
+// Arc analysis — calls LLM once on a condensed version of the transcript.
+// Returns an arc object or null on any failure (non-fatal).
+async function analyzeArc(transcript, model, videoContext, signal) {
+  try {
+    const condensed = condenseTranscript(transcript);
+    const req = buildArcRequest(condensed, model, videoContext);
+    const result = await generate({ ...req, signal });
+    // Validate required percentage fields
+    const required = ['staging_end_pct', 'tension_start_pct', 'climax_zone_start_pct', 'climax_zone_end_pct', 'resolution_start_pct'];
+    for (const field of required) {
+      if (typeof result[field] !== 'number' || result[field] < 0 || result[field] > 1) return null;
+    }
+    if (!result.arc_shape) return null;
+    return result;
+  } catch {
+    return null;
+  }
+}
+
+// Arc validation (JS only, no LLM call):
+// 1. Enforce climax budget ≤ 15% of thoughts
+// 2. Ensure every climax is preceded by building_tension
+function validateArc(data) {
+  const allThoughts = [];
+  for (const section of data.sections || []) {
+    for (const thought of section.thoughts || []) {
+      allThoughts.push(thought);
+    }
+  }
+
+  const total = allThoughts.length;
+  if (total === 0) return data;
+
+  const maxClimax = Math.ceil(total * 0.15);
+  const climaxEntries = allThoughts
+    .map((t, i) => ({ i, complexity: t.complexity || 0 }))
+    .filter(({ i }) => allThoughts[i].energy === 'climax');
+
+  if (climaxEntries.length > maxClimax) {
+    // Keep highest-complexity climax thoughts, downgrade the rest
+    climaxEntries.sort((a, b) => b.complexity - a.complexity);
+    for (let k = maxClimax; k < climaxEntries.length; k++) {
+      allThoughts[climaxEntries[k].i].energy = 'building_tension';
+    }
+  }
+
+  // Ensure each remaining climax is preceded by building_tension or climax
+  for (let i = 1; i < allThoughts.length; i++) {
+    if (allThoughts[i].energy === 'climax') {
+      const prev = allThoughts[i - 1];
+      if (prev.energy !== 'building_tension' && prev.energy !== 'climax') {
+        prev.energy = 'building_tension';
+      }
+    }
+  }
+
+  return data;
+}
+
 async function processTranscript(transcript, sendProgress, durationSeconds = 0, videoContext = null, signal = null) {
   const model = await getModel();
 
@@ -52,6 +111,10 @@ async function processTranscript(transcript, sendProgress, durationSeconds = 0, 
   }
   const resolvedModel = modelCheck.resolvedModel;
 
+  // Arc analysis pass — non-fatal, degrades gracefully to current behavior
+  sendProgress({ stage: 'arc_analysis', message: 'Analyzing narrative arc…' });
+  const arcData = await analyzeArc(transcript, resolvedModel, videoContext, signal);
+
   const wordCount = transcript.split(/\s+/).length;
   const useSinglePass = durationSeconds > 0
     ? durationSeconds <= SINGLE_PASS_DURATION
@@ -60,27 +123,41 @@ async function processTranscript(transcript, sendProgress, durationSeconds = 0, 
   if (useSinglePass) {
     // Single pass — model sees the full transcript
     sendProgress({ stage: 'generating', message: 'Generating… (0 tokens)', total: 1, completed: 0 });
-    const req = buildRestructureRequest(transcript, resolvedModel, videoContext);
+    const arcContext = buildArcContext(arcData, 0, 1);
+    const req = buildRestructureRequest(transcript, resolvedModel, videoContext, arcContext);
     const result = await generate({ ...req, signal, onToken: makeTokenHandler(sendProgress, 0, 1) });
     sendProgress({ stage: 'generating', message: 'Finishing up…', total: 1, completed: 1 });
-    return validateAndNormalize(result);
+    return validateArc(validateAndNormalize(result));
   }
 
   // Long transcript — split on sentence boundaries, process sequentially
   const chunks = splitIntoSentenceChunks(transcript);
   sendProgress({ stage: 'generating', message: `Processing 0/${chunks.length} chunks…`, total: chunks.length, completed: 0 });
 
+  // Compute fractional word-count positions for each chunk
+  const chunkWordCounts = chunks.map(c => c.split(/\s+/).length);
+  const totalChunkWords = chunkWordCounts.reduce((a, b) => a + b, 0);
+  const cumulative = [];
+  let cum = 0;
+  for (const wc of chunkWordCounts) {
+    cumulative.push(cum);
+    cum += wc;
+  }
+
   const results = [];
   for (let i = 0; i < chunks.length; i++) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    const startPct = cumulative[i] / totalChunkWords;
+    const endPct = (cumulative[i] + chunkWordCounts[i]) / totalChunkWords;
+    const arcContext = buildArcContext(arcData, startPct, endPct);
     // Only pass videoContext to the first chunk
-    const req = buildRestructureRequest(chunks[i], resolvedModel, i === 0 ? videoContext : null);
+    const req = buildRestructureRequest(chunks[i], resolvedModel, i === 0 ? videoContext : null, arcContext);
     const result = await generate({ ...req, signal, onToken: makeTokenHandler(sendProgress, i, chunks.length) });
     results.push(result);
     sendProgress({ stage: 'generating', message: `Processed ${i + 1}/${chunks.length} chunks`, total: chunks.length, completed: i + 1 });
   }
 
-  return validateAndNormalize(mergeResults(results));
+  return validateArc(validateAndNormalize(mergeResults(results)));
 }
 
 const VALID_ENERGIES = new Set([
@@ -150,15 +227,30 @@ async function processWithChapters(chapters, sendProgress, signal = null) {
   let completed = 0;
   sendProgress({ stage: 'generating', message: `Processing 0/${totalCalls} chapters…`, total: totalCalls, completed: 0 });
 
+  // Neutral arc for chapter-based context (no extra LLM call — chapter titles define structure)
+  const neutralArc = {
+    arc_shape: 'rise',
+    staging_end_pct: 0.15,
+    tension_start_pct: 0.50,
+    climax_zone_start_pct: 0.65,
+    climax_zone_end_pct: 0.85,
+    resolution_start_pct: 0.85,
+  };
+
   const sections = [];
   for (let i = 0; i < chapters.length; i++) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     const chapter = chapters[i];
     const chunks = chapterChunks[i];
 
+    // Derive arc context from chapter's position in the video
+    const startPct = chapters.length > 1 ? i / chapters.length : 0;
+    const endPct = chapters.length > 1 ? (i + 1) / chapters.length : 1;
+    const arcContext = buildArcContext(neutralArc, startPct, endPct);
+
     if (chunks.length === 1) {
       // Single call for this chapter
-      const req = buildChapterRequest(chapter.title, chunks[0], resolvedModel);
+      const req = buildChapterRequest(chapter.title, chunks[0], resolvedModel, arcContext);
       const result = await generate({ ...req, signal, onToken: makeTokenHandler(sendProgress, completed, totalCalls) });
       completed++;
       sendProgress({ stage: 'generating', message: `Processed ${completed}/${totalCalls} chapters`, total: totalCalls, completed });
@@ -174,7 +266,7 @@ async function processWithChapters(chapters, sendProgress, signal = null) {
       let recap = '';
       for (const chunk of chunks) {
         if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-        const req = buildChapterRequest(chapter.title, chunk, resolvedModel);
+        const req = buildChapterRequest(chapter.title, chunk, resolvedModel, arcContext);
         const result = await generate({ ...req, signal, onToken: makeTokenHandler(sendProgress, completed, totalCalls) });
         completed++;
         sendProgress({ stage: 'generating', message: `Processed ${completed}/${totalCalls} chapters`, total: totalCalls, completed });
@@ -261,7 +353,7 @@ chrome.runtime.onConnect.addListener((port) => {
     };
 
     const pipeline = message.chapters?.length
-      ? processWithChapters(message.chapters, sendProgress, controller.signal).then(validateAndNormalize)
+      ? processWithChapters(message.chapters, sendProgress, controller.signal).then(validateAndNormalize).then(validateArc)
       : processTranscript(message.transcript, sendProgress, message.durationSeconds || 0, message.videoContext || null, controller.signal);
 
     pipeline

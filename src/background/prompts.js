@@ -87,20 +87,31 @@ Rules for "takeaways":
 - 3-5 key points from the entire transcript
 - Shown at the end as a summary card`;
 
-export function buildRestructureRequest(transcript, model, videoContext) {
-  let prompt = transcript;
-  if (videoContext) {
-    const parts = ['[VIDEO CONTEXT]'];
-    if (videoContext.title) parts.push(`Title: ${videoContext.title}`);
-    if (videoContext.category) parts.push(`Category: ${videoContext.category}`);
-    if (videoContext.keywords?.length) parts.push(`Keywords: ${videoContext.keywords.slice(0, 15).join(', ')}`);
-    if (videoContext.description) parts.push(`Description: ${videoContext.description.slice(0, 500)}`);
-    parts.push('', '[TRANSCRIPT]');
-    prompt = parts.join('\n') + '\n' + transcript;
+export function buildRestructureRequest(transcript, model, videoContext, arcContext = null) {
+  if (arcContext || videoContext) {
+    const parts = [];
+    if (arcContext) {
+      parts.push(arcContext, '');
+    }
+    if (videoContext) {
+      parts.push('[VIDEO CONTEXT]');
+      if (videoContext.title) parts.push(`Title: ${videoContext.title}`);
+      if (videoContext.category) parts.push(`Category: ${videoContext.category}`);
+      if (videoContext.keywords?.length) parts.push(`Keywords: ${videoContext.keywords.slice(0, 15).join(', ')}`);
+      if (videoContext.description) parts.push(`Description: ${videoContext.description.slice(0, 500)}`);
+      parts.push('', '[TRANSCRIPT]');
+    }
+    return {
+      model,
+      prompt: parts.join('\n') + '\n' + transcript,
+      system: RESTRUCTURE_PROMPT,
+      format: 'json',
+      stream: false,
+    };
   }
   return {
     model,
-    prompt,
+    prompt: transcript,
     system: RESTRUCTURE_PROMPT,
     format: 'json',
     stream: false,
@@ -182,14 +193,103 @@ Rules for mathematical content:
 Rules for "recap":
 - One sentence summarizing this chapter's key point`;
 
-export function buildChapterRequest(title, text, model) {
+export function buildChapterRequest(title, text, model, arcContext = null) {
+  const systemParts = [];
+  if (arcContext) {
+    systemParts.push(arcContext, '');
+  }
+  systemParts.push(`The following transcript is from the chapter titled "${title}".`, '', CHAPTER_RESTRUCTURE_PROMPT);
   return {
     model,
     prompt: text,
-    system: `The following transcript is from the chapter titled "${title}".\n\n${CHAPTER_RESTRUCTURE_PROMPT}`,
+    system: systemParts.join('\n'),
     format: 'json',
     stream: false,
   };
+}
+
+// Arc analysis prompt — fast one-shot call on condensed transcript
+export const ARC_ANALYSIS_PROMPT = `You are analyzing the narrative arc of a video transcript. Return a JSON object with this exact format:
+
+{
+  "arc_shape": "rise",
+  "staging_end_pct": 0.15,
+  "tension_start_pct": 0.50,
+  "climax_zone_start_pct": 0.65,
+  "climax_zone_end_pct": 0.82,
+  "resolution_start_pct": 0.82
+}
+
+arc_shape must be one of: "rise", "fall", "fall_then_rise", "rise_then_fall", "uniform"
+- rise: builds steadily to a climax near the end
+- fall: peaks early, then winds down
+- fall_then_rise: starts high, dips, then rises again
+- rise_then_fall: builds to a peak, then resolves
+- uniform: consistent energy throughout
+
+All pct values must be between 0.0 and 1.0.
+Typical ranges: staging_end_pct 0.10–0.20, tension_start_pct 0.40–0.60, climax_zone 0.60–0.85, resolution_start_pct 0.80–0.95.
+Analyze the content and identify where energy builds, peaks, and resolves.`;
+
+// Condense transcript to ~targetWords by sampling every Nth sentence
+export function condenseTranscript(text, targetWords = 1500) {
+  const wordCount = text.split(/\s+/).length;
+  if (wordCount <= targetWords) return text;
+
+  const sentences = text.match(/[^.!?]*[.!?]+[\s]?|[^.!?]+$/g) || [text];
+  const keepEvery = Math.ceil(sentences.length / (targetWords / 15));
+  return sentences.filter((_, i) => i % keepEvery === 0).join(' ');
+}
+
+export function buildArcRequest(condensedText, model, videoContext) {
+  let prompt = condensedText;
+  if (videoContext) {
+    const parts = ['[VIDEO CONTEXT]'];
+    if (videoContext.title) parts.push(`Title: ${videoContext.title}`);
+    if (videoContext.category) parts.push(`Category: ${videoContext.category}`);
+    parts.push('', '[CONDENSED TRANSCRIPT]');
+    prompt = parts.join('\n') + '\n' + condensedText;
+  }
+  return {
+    model,
+    prompt,
+    system: ARC_ANALYSIS_PROMPT,
+    format: 'json',
+    stream: false,
+  };
+}
+
+// Returns a natural-language arc context preamble for the LLM, or null if arcData is null
+export function buildArcContext(arcData, chunkStartPct, chunkEndPct) {
+  if (!arcData) return null;
+
+  const midPct = (chunkStartPct + chunkEndPct) / 2;
+  const { arc_shape, staging_end_pct, tension_start_pct, climax_zone_start_pct, climax_zone_end_pct } = arcData;
+
+  let phase, guidance;
+  if (midPct < staging_end_pct) {
+    phase = 'staging';
+    guidance = 'Use calm_intro and explanation. No climax.';
+  } else if (midPct < tension_start_pct) {
+    phase = 'development';
+    guidance = 'Use explanation and contrast. One building_tension is fine.';
+  } else if (midPct < climax_zone_start_pct) {
+    phase = 'tension-building';
+    guidance = `Shift toward building_tension. No climax yet — the climax zone is at ${Math.round(climax_zone_start_pct * 100)}–${Math.round(climax_zone_end_pct * 100)}%.`;
+  } else if (midPct < climax_zone_end_pct) {
+    phase = 'climax';
+    guidance = '1–3 climax thoughts appropriate here. Each climax needs a preceding building_tension.';
+  } else {
+    phase = 'resolution';
+    guidance = 'Use resolution and explanation. No climax. Wrap up.';
+  }
+
+  const startPctStr = Math.round(chunkStartPct * 100);
+  const endPctStr = Math.round(chunkEndPct * 100);
+
+  return `[NARRATIVE ARC CONTEXT]
+Overall arc: ${arc_shape}. This chunk covers ${startPctStr}–${endPctStr}% of the content (${phase} phase).
+${guidance}`;
 }
 
 // Sub-chunk a single chapter if it exceeds the word limit

@@ -55,8 +55,11 @@ window.YTPresenter.Timeline = class Timeline {
 
   buildSchedule() {
     const ENERGY_MULTIPLIERS = {
+      calm_intro: 1.3,
       climax: 1.4,
       emotional: 1.3,
+      question: 1.15,
+      resolution: 1.15,
       building_tension: 0.9,
       enumeration: 0.85,
     };
