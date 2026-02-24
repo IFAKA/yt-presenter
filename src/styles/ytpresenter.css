@@ -421,7 +421,7 @@ html:not([dark]) .ytpres-speed-menu-item:hover {
 .ytpres-content:has(.ytpres-takeaways) {
   align-items: flex-start;
   overflow-y: auto;
-  padding: 48px 24px;
+  padding: 48px 24px 80px;
 }
 .ytpres-takeaways {
   text-align: left;
