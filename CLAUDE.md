@@ -60,6 +60,10 @@ Between-section features: breathing pauses, section recaps, progress celebration
 
 Space=play/pause, Arrows=navigate/speed, 1/2/3=layout modes, T=close, F=fullscreen
 
+## User Settings via `chrome.storage.local`
+
+- `wpm` — Words-per-minute reading speed (set by popup). Default lives in `Timeline` constructor (250). Never hardcode defaults elsewhere; let the owning module handle fallbacks.
+
 ## Key Data Structures
 
 The AI (or deterministic fallback) produces this shape, consumed by Timeline:

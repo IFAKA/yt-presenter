@@ -141,6 +141,7 @@
       if (!content) { closeReader(); return; }
 
       // Initialize engine
+      const { wpm } = await chrome.storage.local.get(['wpm']);
       timeline = new YT.Timeline();
       timeline.load(processedData, wpm);
 
