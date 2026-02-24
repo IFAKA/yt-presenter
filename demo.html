@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html dark>
+<head>
+<meta charset="utf-8">
+<title>YTPresenter — Kinetic Typography Demo</title>
+<link rel="stylesheet" href="src/styles/ytpresenter.css">
+<style>
+  body { margin: 0; background: #0a0a0a; font-family: system-ui; }
+  .demo-header {
+    text-align: center; padding: 16px; color: #888; font-size: 13px;
+    background: #111; border-bottom: 1px solid #222;
+    display: flex; justify-content: center; gap: 24px; align-items: center;
+  }
+  .demo-header kbd { background: #222; padding: 2px 8px; border-radius: 4px; font-family: monospace; color: #ccc; }
+</style>
+</head>
+<body>
+<div class="demo-header">
+  <span><kbd>Space</kbd> Play/Pause</span>
+  <span><kbd>←</kbd><kbd>→</kbd> Navigate</span>
+  <span><kbd>↑</kbd><kbd>↓</kbd> Speed</span>
+  <span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> Flow / Stack / Impact</span>
+  <span><kbd>B</kbd> Bionic</span>
+  <span><kbd>T</kbd> Close</span>
+</div>
+
+<!-- Simulated YouTube player -->
+<div id="player-container" style="width:900px;max-width:95vw;aspect-ratio:16/9;margin:20px auto;">
+  <div id="movie_player" style="width:100%;height:100%;background:#222;display:flex;align-items:center;justify-content:center;color:#888;border-radius:12px;font-size:18px;">
+    Click "Start Demo" below
+    <video style="display:none"></video>
+  </div>
+</div>
+
+<div style="text-align:center;margin:16px;">
+  <button id="start-btn" style="padding:12px 32px;border:none;border-radius:24px;background:#3ea6ff;color:#000;font-size:16px;font-weight:600;cursor:pointer;">
+    Start Demo
+  </button>
+</div>
+<div id="status" style="text-align:center;color:#666;font-size:13px;margin-top:8px;min-height:20px;"></div>
+
+<!-- Load all content scripts in order -->
+<script src="src/content/transcript/extractor.js"></script>
+<script src="src/content/transcript/parser.js"></script>
+<script src="src/content/transcript/preprocessor.js"></script>
+<script src="src/content/ui/injector.js"></script>
+<script src="src/content/ui/player-replacer.js"></script>
+<script src="src/content/ui/loading.js"></script>
+<script src="src/content/engine/pacing.js"></script>
+<script src="src/content/engine/effects.js"></script>
+<script src="src/content/engine/layout.js"></script>
+<script src="src/content/engine/timeline.js"></script>
+<script src="src/content/engine/animator.js"></script>
+<script src="src/content/ui/controls.js"></script>
+<script src="src/content/experience/recap.js"></script>
+<script src="src/content/experience/takeaways.js"></script>
+<script src="src/content/experience/breathe.js"></script>
+<script src="src/content/experience/progress-celebration.js"></script>
+<script src="src/content/experience/ambient.js"></script>
+
+<script>
+// Demo data: a crafted script that exercises ALL layout modes and energy states
+// This simulates what AI-processed data would look like
+const DEMO_DATA = {
+  sections: [
+    {
+      title: "The Attention Economy",
+      recap: "Our attention is the most valuable resource in the digital age.",
+      thoughts: [
+        {
+          text: "Welcome to the future of reading.",
+          emphasis: ["future", "reading"],
+          mode: "flow",
+          energy: "calm_intro",
+          complexity: 0.3
+        },
+        {
+          text: "Every day, the average person consumes the equivalent of 174 newspapers worth of information.",
+          emphasis: ["174", "newspapers"],
+          mode: "flow",
+          energy: "explanation",
+          complexity: 0.6
+        },
+        {
+          text: "But how much do we actually retain?",
+          emphasis: ["retain"],
+          mode: "flow",
+          energy: "question",
+          complexity: 0.3
+        },
+        {
+          text: "Almost nothing.",
+          emphasis: ["nothing"],
+          mode: "impact",
+          energy: "climax",
+          complexity: 0.1
+        }
+      ]
+    },
+    {
+      title: "Three Principles of Deep Reading",
+      recap: "Focus, rhythm, and emphasis transform passive watching into active understanding.",
+      thoughts: [
+        {
+          text: "There are three principles that change everything about how we absorb information.",
+          emphasis: ["three", "principles"],
+          mode: "flow",
+          energy: "building_tension",
+          complexity: 0.5
+        },
+        {
+          text: "First, focused attention eliminates the noise and lets the core message land.",
+          emphasis: ["focused", "attention"],
+          mode: "stack",
+          energy: "enumeration",
+          complexity: 0.5
+        },
+        {
+          text: "Second, rhythm and pacing match your natural reading speed, not the speaker's pace.",
+          emphasis: ["rhythm", "pacing"],
+          mode: "stack",
+          energy: "enumeration",
+          complexity: 0.6
+        },
+        {
+          text: "Third, visual emphasis highlights what matters so your brain can build connections.",
+          emphasis: ["visual", "emphasis"],
+          mode: "stack",
+          energy: "enumeration",
+          complexity: 0.6
+        },
+        {
+          text: "But here's what most people get wrong about speed reading.",
+          emphasis: ["wrong"],
+          mode: "flow",
+          energy: "contrast",
+          complexity: 0.4
+        }
+      ]
+    },
+    {
+      title: "The Science of Kinetic Typography",
+      recap: "Motion and timing encode meaning that static text cannot convey.",
+      thoughts: [
+        {
+          text: "Kinetic typography isn't just moving text on a screen.",
+          emphasis: ["Kinetic", "typography"],
+          mode: "flow",
+          energy: "explanation",
+          complexity: 0.5
+        },
+        {
+          text: "It's a language of emotion encoded in motion.",
+          emphasis: ["language", "emotion", "motion"],
+          mode: "flow",
+          energy: "emotional",
+          complexity: 0.4
+        },
+        {
+          text: "When words arrive with intention, with weight, with carefully designed timing?",
+          emphasis: ["intention", "weight", "timing"],
+          mode: "flow",
+          energy: "building_tension",
+          complexity: 0.7
+        },
+        {
+          text: "Something remarkable happens.",
+          emphasis: ["remarkable"],
+          mode: "impact",
+          energy: "building_tension",
+          complexity: 0.3
+        },
+        {
+          text: "You remember.",
+          emphasis: ["remember"],
+          mode: "impact",
+          energy: "climax",
+          complexity: 0.1
+        },
+        {
+          text: "Studies show that well-timed kinetic text improves recall by up to forty percent compared to static reading.",
+          emphasis: ["forty", "percent"],
+          mode: "flow",
+          energy: "resolution",
+          complexity: 0.7
+        }
+      ]
+    },
+    {
+      title: "Putting It Together",
+      recap: "The best way to learn is to transform passive content into an active reading experience.",
+      thoughts: [
+        {
+          text: "So the next time you find a great video but don't have fifteen minutes to watch it?",
+          emphasis: ["fifteen", "minutes"],
+          mode: "flow",
+          energy: "question",
+          complexity: 0.5
+        },
+        {
+          text: "Read it instead.",
+          emphasis: ["Read"],
+          mode: "impact",
+          energy: "climax",
+          complexity: 0.1
+        },
+        {
+          text: "Read it your way.",
+          emphasis: ["your"],
+          mode: "impact",
+          energy: "resolution",
+          complexity: 0.2
+        }
+      ]
+    }
+  ],
+  takeaways: [
+    "We consume massive amounts of information but retain almost nothing without focus.",
+    "Three principles — attention, rhythm, and emphasis — transform passive watching into deep understanding.",
+    "Kinetic typography encodes emotion in motion, improving recall by up to 40%.",
+    "The future of video content is reading: faster, deeper, on your terms."
+  ]
+};
+
+const YT = window.YTPresenter;
+let timeline, animator, controls;
+let active = false;
+
+const status = document.getElementById('status');
+
+document.getElementById('start-btn').addEventListener('click', startDemo);
+
+async function startDemo() {
+  if (active) return;
+  active = true;
+  document.getElementById('start-btn').style.display = 'none';
+
+  status.textContent = 'Replacing player...';
+  const stage = YT.replacePlayer();
+  if (!stage) { status.textContent = 'ERROR: Could not find #movie_player'; return; }
+
+  YT.addAmbient(stage);
+
+  // Brief loading state
+  YT.showLoading(stage, { title: 'Kinetic Typography Demo', channelName: 'YTPresenter Test Suite' });
+  await new Promise(r => setTimeout(r, 1200));
+  YT.hideLoading(stage);
+  await new Promise(r => setTimeout(r, 500));
+
+  status.textContent = 'Initializing timeline...';
+
+  // Create timeline with demo data
+  timeline = new YT.Timeline();
+  timeline.load(DEMO_DATA, 250);
+
+  status.textContent = `Loaded: ${timeline.thoughts.length} thoughts across ${DEMO_DATA.sections.length} sections, ${Math.round(timeline.totalDuration/1000)}s total`;
+
+  // Create animator
+  const content = YT.getContentArea();
+  animator = new YT.Animator(content, timeline);
+
+  // Create controls
+  controls = new YT.Controls(stage, timeline, {
+    onClose: closeDemo,
+    onModeChange: (m) => {
+      animator.setMode(m);
+      status.textContent = `Mode: ${m}`;
+    },
+    getCurrentMode: () => animator.mode,
+  });
+  controls.setVideoDuration(15 * 60); // Simulate 15 min video
+
+  // Section change events
+  timeline.on('sectionChange', ({ section }) => {
+    status.textContent = `Section: ${section.title}`;
+  });
+
+  // Takeaways at end
+  timeline.on('end', () => {
+    status.textContent = 'Finished! Showing takeaways...';
+    const cnt = YT.getContentArea();
+    if (cnt && DEMO_DATA.takeaways?.length > 0) {
+      setTimeout(() => YT.showTakeaways(cnt, DEMO_DATA.takeaways), 500);
+    }
+  });
+
+  // Render first thought and play
+  const first = timeline.thoughts[0];
+  if (first) await animator.render(first, 0);
+  timeline.play();
+
+  // Keyboard shortcuts (same as content.js)
+  document.addEventListener('keydown', handleKey);
+}
+
+function closeDemo() {
+  if (timeline) { timeline.destroy(); timeline = null; }
+  if (animator) { animator.destroy(); animator = null; }
+  if (controls) { controls.destroy(); controls = null; }
+
+  const stage = YT.getStage();
+  if (stage) YT.removeAmbient(stage);
+  YT.restorePlayer();
+  active = false;
+
+  document.removeEventListener('keydown', handleKey);
+  document.getElementById('start-btn').style.display = '';
+  status.textContent = 'Demo closed. Click Start to try again.';
+}
+
+function handleKey(e) {
+  if (!active || !timeline) return;
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+
+  switch (e.code) {
+    case 'Space':
+      e.preventDefault();
+      timeline.togglePlay();
+      status.textContent = timeline.playing ? 'Playing' : 'Paused';
+      break;
+    case 'ArrowRight':
+      e.preventDefault();
+      timeline.next();
+      break;
+    case 'ArrowLeft':
+      e.preventDefault();
+      timeline.prev();
+      break;
+    case 'ArrowUp':
+      e.preventDefault();
+      controls.wpm = YT.nextSpeed(controls.wpm);
+      timeline.setWpm(controls.wpm);
+      controls.updateSpeedLabel();
+      status.textContent = `Speed: ${YT.getSpeedLabel(controls.wpm)} (${controls.wpm} WPM)`;
+      break;
+    case 'ArrowDown':
+      e.preventDefault();
+      controls.wpm = YT.prevSpeed(controls.wpm);
+      timeline.setWpm(controls.wpm);
+      controls.updateSpeedLabel();
+      status.textContent = `Speed: ${YT.getSpeedLabel(controls.wpm)} (${controls.wpm} WPM)`;
+      break;
+    case 'Digit1':
+      animator.setMode('flow');
+      controls.updateModeLabel('flow');
+      status.textContent = 'Mode: Flow (auto)';
+      break;
+    case 'Digit2':
+      animator.setMode('stack');
+      controls.updateModeLabel('stack');
+      status.textContent = 'Mode: Stack';
+      break;
+    case 'Digit3':
+      animator.setMode('impact');
+      controls.updateModeLabel('impact');
+      status.textContent = 'Mode: Impact';
+      break;
+    case 'KeyB':
+      if (animator) {
+        const on = animator.toggleBionic();
+        status.textContent = `Bionic Reading: ${on ? 'ON' : 'OFF'}`;
+      }
+      break;
+    case 'KeyT':
+      closeDemo();
+      break;
+  }
+}
+</script>
+</body>
+</html>

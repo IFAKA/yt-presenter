@@ -1,0 +1,71 @@
+{
+  "manifest_version": 3,
+  "name": "YT Presenter — Read YouTube Videos",
+  "version": "0.1.0",
+  "description": "Transform YouTube videos into cinematic kinetic typography. Read at 2-3x speed with AI-restructured prose.",
+  "permissions": ["activeTab", "storage", "declarativeNetRequest"],
+  "host_permissions": ["http://localhost:11434/*", "*://*.youtube.com/*"],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "ollama_headers",
+        "enabled": true,
+        "path": "src/background/ollama-rules.json"
+      }
+    ]
+  },
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.youtube.com/watch*"],
+      "js": ["src/content/main-world.js"],
+      "world": "MAIN",
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://*.youtube.com/watch*"],
+      "js": [
+        "vendor/katex/katex.min.js",
+        "src/content/transcript/extractor.js",
+        "src/content/transcript/parser.js",
+
+        "src/content/ui/injector.js",
+        "src/content/ui/player-replacer.js",
+        "src/content/ui/loading.js",
+        "src/content/engine/pacing.js",
+        "src/content/engine/effects.js",
+        "src/content/engine/layout.js",
+        "src/content/engine/timeline.js",
+        "src/content/engine/animator.js",
+        "src/content/ui/controls.js",
+        "src/content/ui/outline.js",
+        "src/content/ui/overview.js",
+        "src/content/experience/recap.js",
+        "src/content/experience/takeaways.js",
+        "src/content/experience/breathe.js",
+        "src/content/experience/progress-celebration.js",
+        "src/content/experience/ambient.js",
+        "src/content/content.js"
+      ],
+      "css": ["vendor/katex/katex.min.css", "src/styles/ytpresenter.css"],
+      "world": "ISOLATED",
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  }
+}

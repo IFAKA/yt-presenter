@@ -1,0 +1,11 @@
+# Playwright MCP logs/screenshots
+.playwright-mcp/
+
+# Chrome extension metadata
+_metadata/
+
+# Screenshots from development/testing
+/*.png
+
+# OS files
+.DS_Store

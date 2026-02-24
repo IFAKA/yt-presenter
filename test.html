@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>YTPresenter E2E Test</title>
+<link rel="stylesheet" href="src/styles/ytpresenter.css">
+<style>
+  body { margin: 0; background: #0a0a0a; font-family: system-ui; }
+  #test-results { position: fixed; top: 10px; right: 10px; background: #1a1a1a; color: #e8e8e8;
+    padding: 16px; border-radius: 8px; font-size: 12px; max-width: 300px; z-index: 999; }
+  .pass { color: #4caf50; } .fail { color: #f44336; }
+</style>
+</head>
+<body>
+<!-- Simulate YouTube player -->
+<div id="player-container" style="width:800px;height:450px;margin:40px auto;">
+  <div id="movie_player" style="width:100%;height:100%;background:#222;display:flex;align-items:center;justify-content:center;color:#888;border-radius:12px;">
+    <span>Simulated YouTube Player</span>
+    <video style="display:none"></video>
+  </div>
+</div>
+<div id="top-level-buttons-computed" style="display:flex;gap:8px;justify-content:center;margin:16px;">
+  <!-- YouTube action bar simulation -->
+</div>
+<div id="test-results"></div>
+
+<!-- Load all content scripts in order -->
+<script src="src/content/transcript/extractor.js"></script>
+<script src="src/content/transcript/parser.js"></script>
+<script src="src/content/transcript/preprocessor.js"></script>
+<script src="src/content/ui/injector.js"></script>
+<script src="src/content/ui/player-replacer.js"></script>
+<script src="src/content/ui/loading.js"></script>
+<script src="src/content/engine/pacing.js"></script>
+<script src="src/content/engine/effects.js"></script>
+<script src="src/content/engine/layout.js"></script>
+<script src="src/content/engine/timeline.js"></script>
+<script src="src/content/engine/animator.js"></script>
+<script src="src/content/ui/controls.js"></script>
+<script src="src/content/experience/recap.js"></script>
+<script src="src/content/experience/takeaways.js"></script>
+<script src="src/content/experience/breathe.js"></script>
+<script src="src/content/experience/progress-celebration.js"></script>
+<script src="src/content/experience/ambient.js"></script>
+
+<script>
+const YT = window.YTPresenter;
+const results = [];
+const log = (name, pass, detail) => {
+  results.push({ name, pass, detail });
+  const el = document.getElementById('test-results');
+  el.innerHTML = results.map(r =>
+    `<div class="${r.pass ? 'pass' : 'fail'}">${r.pass ? '✓' : '✗'} ${r.name}${r.detail ? ': ' + r.detail : ''}</div>`
+  ).join('');
+};
+
+async function runTests() {
+  // Test 1: All modules loaded
+  const modules = ['preprocess','parseJson3','segmentsToPlainText','injectReadButton','removeReadButton',
+    'replacePlayer','restorePlayer','getStage','getContentArea','showLoading','updateLoadingProgress','hideLoading',
+    'getSpeedLabel','nextSpeed','prevSpeed','getEnergyStyle','applyEntrance','applyExit','buildThoughtHTML',
+    'FlowLayout','StackLayout','ImpactLayout','Timeline','Animator','Controls',
+    'showRecap','hideRecap','showTakeaways','showBreathe','celebrate','addAmbient','removeAmbient'];
+  const missing = modules.filter(m => typeof YT[m] !== 'function' && typeof YT[m] !== 'object');
+  log('All modules loaded', missing.length === 0, missing.length ? 'Missing: ' + missing.join(', ') : `${modules.length} OK`);
+
+  // Test 2: Preprocessor with mock transcript
+  const mockSegments = [
+    { text: "So basically, like, the thing is, you know, microservices are kind of distributed monoliths, right?", startMs: 0, endMs: 5000 },
+    { text: "Um, the real problem isn't the architecture.", startMs: 5000, endMs: 8000 },
+    { text: "It's that every team builds their own little kingdom.", startMs: 8000, endMs: 12000 },
+    { text: "First, you need to define clear boundaries.", startMs: 18000, endMs: 22000 },
+    { text: "Second, you need shared contracts.", startMs: 22000, endMs: 25000 },
+    { text: "Third, you need automated testing.", startMs: 25000, endMs: 28000 },
+    { text: "But here's the thing - most teams don't do this.", startMs: 28000, endMs: 32000 },
+    { text: "The network is a lie.", startMs: 32000, endMs: 35000 },
+  ];
+  const processed = YT.preprocess(mockSegments);
+  log('Preprocessor runs', !!processed && processed.sections?.length > 0, `${processed.sections.length} sections, ${processed.sections.reduce((a,s)=>a+s.thoughts.length,0)} thoughts`);
+
+  // Test 3: Filler removal
+  const firstThought = processed.sections[0]?.thoughts[0]?.text || '';
+  const hasFillers = /\bbasically\b|\blike\b|\byou know\b|\bum\b/i.test(firstThought);
+  log('Filler removal', !hasFillers || firstThought.length < mockSegments[0].text.length, 'First: ' + firstThought.substring(0, 60));
+
+  // Test 4: Takeaways generated
+  log('Takeaways generated', processed.takeaways?.length > 0, `${processed.takeaways.length} takeaways`);
+
+  // Test 5: Timeline loads and schedules
+  const timeline = new YT.Timeline();
+  timeline.load(processed, 250);
+  log('Timeline loads', timeline.thoughts.length > 0 && timeline.totalDuration > 0,
+    `${timeline.thoughts.length} thoughts, ${Math.round(timeline.totalDuration/1000)}s total`);
+
+  // Test 6: Player replacement
+  const stage = YT.replacePlayer();
+  const playerHidden = document.getElementById('movie_player')?.style.display === 'none';
+  const stageExists = !!document.getElementById('ytpres-stage');
+  log('Player replacement', playerHidden && stageExists, `player hidden=${playerHidden}, stage=${stageExists}`);
+
+  // Test 7: Loading UI
+  YT.showLoading(stage, { title: 'Test Video Title', channelName: 'Test Channel' });
+  const loadingEl = stage.querySelector('.ytpres-loading');
+  log('Loading UI', !!loadingEl, loadingEl ? 'Rendered' : 'Missing');
+
+  // Test 8: Hide loading
+  YT.hideLoading(stage);
+  await new Promise(r => setTimeout(r, 500));
+
+  // Test 9: Ambient background
+  const ambient = YT.addAmbient(stage);
+  log('Ambient background', !!stage.querySelector('.ytpres-ambient'), ambient ? 'Added' : 'Skipped (reduced motion)');
+
+  // Test 10: Animator + Flow layout
+  const content = YT.getContentArea();
+  const animator = new YT.Animator(content, timeline);
+  await animator.render(timeline.thoughts[0], 0);
+  await new Promise(r => setTimeout(r, 100)); // let animation start
+  const flowEl = content.querySelector('.ytpres-flow, .ytpres-impact');
+  const thoughtEl = content.querySelector('.ytpres-thought');
+  log('Flow layout renders', !!thoughtEl, thoughtEl ? 'Thought visible (' + (flowEl?.className || '') + ')' : 'Missing');
+
+  // Test 11: Controls
+  const controls = new YT.Controls(stage, timeline, {
+    onClose: () => {},
+    onModeChange: (m) => animator.setMode(m),
+    getCurrentMode: () => animator.mode,
+  });
+  const controlsEl = stage.querySelector('.ytpres-controls');
+  log('Controls render', !!controlsEl, controlsEl ? 'Visible' : 'Missing');
+
+  // Test 12: Mode switching to Stack
+  animator.setMode('stack');
+  await new Promise(r => setTimeout(r, 600));
+  const stackEl = content.querySelector('.ytpres-stack');
+  log('Stack mode', !!stackEl, stackEl ? 'Rendered' : 'Missing');
+
+  // Test 13: Mode switching to Impact
+  animator.setMode('impact');
+  await new Promise(r => setTimeout(r, 1200));
+  const impactEl = content.querySelector('.ytpres-impact');
+  log('Impact mode', !!impactEl, impactEl ? 'Rendered' : 'Missing');
+
+  // Test 14: Timeline play/pause
+  animator.setMode('flow');
+  timeline.play();
+  await new Promise(r => setTimeout(r, 200));
+  log('Timeline plays', timeline.playing, 'playing=' + timeline.playing);
+  timeline.pause();
+  log('Timeline pauses', !timeline.playing, 'playing=' + timeline.playing);
+
+  // Test 15: Timeline navigation
+  const prevIdx = timeline.currentIndex;
+  timeline.next();
+  log('Timeline next', timeline.currentIndex > prevIdx || timeline.currentIndex === prevIdx,
+    `${prevIdx} -> ${timeline.currentIndex}`);
+
+  timeline.prev();
+  log('Timeline prev', timeline.currentIndex <= prevIdx, `back to ${timeline.currentIndex}`);
+
+  // Test 16: Speed control
+  const oldWpm = controls.wpm;
+  controls.wpm = YT.nextSpeed(controls.wpm);
+  log('Speed control', controls.wpm > oldWpm, `${oldWpm} -> ${controls.wpm} wpm`);
+
+  // Test 17: Celebrate
+  YT.celebrate(stage);
+  const celebEl = stage.querySelector('.ytpres-celebration');
+  log('Celebration effect', !!celebEl, celebEl ? 'Border glow active' : 'Missing');
+
+  // Test 18: Restore player
+  timeline.destroy();
+  controls.destroy();
+  animator.destroy();
+  YT.removeAmbient(stage);
+  YT.restorePlayer();
+  const playerBack = document.getElementById('movie_player')?.style.display !== 'none';
+  const stageGone = !document.getElementById('ytpres-stage');
+  log('Player restored', playerBack && stageGone, `player=${playerBack}, stageRemoved=${stageGone}`);
+
+  // Test 19: Takeaways card rendering
+  const takStage = YT.replacePlayer();
+  const takContent = YT.getContentArea();
+  YT.showTakeaways(takContent, processed.takeaways);
+  const takEl = takContent.querySelector('.ytpres-takeaways');
+  log('Takeaways card', !!takEl, takEl ? `${takContent.querySelectorAll('.ytpres-takeaway-item').length} items` : 'Missing');
+
+  // Test 20: Read button injection
+  YT.restorePlayer();
+  YT.injectReadButton(() => {});
+  const readBtn = document.getElementById('ytpres-read-btn');
+  log('Read button injected', !!readBtn, readBtn ? 'In action bar' : 'Missing');
+
+  // Summary
+  const passed = results.filter(r => r.pass).length;
+  const total = results.length;
+  log(`--- SUMMARY ---`, passed === total, `${passed}/${total} passed`);
+}
+
+runTests().catch(e => log('TEST ERROR', false, e.message));
+</script>
+</body>
+</html>

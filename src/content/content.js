@@ -1,0 +1,437 @@
+// YTPresenter Content Script — Orchestrator
+// ISOLATED world: manages the full pipeline from transcript to reading experience
+
+(function() {
+  'use strict';
+
+  const YT = window.YTPresenter;
+
+  // ——— Service worker messaging with retry ———
+  async function sendToSW(message, retries = 2) {
+    for (let i = 0; i <= retries; i++) {
+      try {
+        return await chrome.runtime.sendMessage(message);
+      } catch (err) {
+        if (i < retries && /receiving end|could not establish/i.test(err.message)) {
+          await new Promise(r => setTimeout(r, 500));
+          continue;
+        }
+        throw err;
+      }
+    }
+  }
+
+  // ——— State ———
+  let captionTracks = null;
+  let videoInfo = null;
+  let chapters = null;
+  let extendedData = null;
+  let timeline = null;
+  let animator = null;
+  let controls = null;
+  let outline = null;
+  let overview = null;
+  let active = false;
+  let cachedResult = null;   // cached AI output keyed by videoId
+  let cachedVideoId = null;
+
+  // ——— Listen for caption data from MAIN world ———
+  window.addEventListener('message', (event) => {
+    if (event.source !== window) return;
+    if (event.origin !== window.location.origin) return;
+    if (event.data?.type === 'YTPRES_CAPTION_DATA') {
+      captionTracks = event.data.tracks;
+      videoInfo = event.data.videoInfo;
+      chapters = event.data.chapters || null;
+      extendedData = event.data.extended || null;
+
+      // Feature 6: Description timestamps as chapter fallback
+      if (!chapters && extendedData?.descriptionTimestamps?.length >= 2) {
+        chapters = extendedData.descriptionTimestamps.map(ts => ({
+          title: ts.title,
+          startMs: ts.startTimeSeconds * 1000,
+          thumbnails: [],
+        }));
+      }
+
+      YT.injectReadButton(handleReadClick, captionTracks);
+    }
+  });
+
+  // ——— Listen for progress updates from service worker ———
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message.type === 'PROCESSING_PROGRESS') {
+      const stage = YT.getStage();
+      if (stage) YT.updateLoadingProgress(stage, message);
+    }
+  });
+
+  // ——— Main Read Click Handler ———
+  async function handleReadClick() {
+    if (active) {
+      closeReader();
+      return;
+    }
+
+    if (!captionTracks) {
+      showError('no_captions');
+      return;
+    }
+
+    active = true;
+
+    const stage = YT.replacePlayer();
+    if (!stage) { active = false; return; }
+
+    YT.addAmbient(stage);
+    YT.showLoading(stage, videoInfo || {}, extendedData);
+
+    try {
+      const videoId = videoInfo?.videoId || new URLSearchParams(location.search).get('v');
+      let processedData;
+
+      if (cachedResult && cachedVideoId === videoId) {
+        // Reuse cached AI output — skip loading screen entirely
+        processedData = cachedResult;
+        YT.hideLoading(stage);
+      } else {
+        // Fetch and parse transcript
+        const selectedLang = document.getElementById('ytpres-lang-select')?.value || 'en';
+        const { segments } = await YT.fetchTranscript(captionTracks, videoId, selectedLang);
+        const plainText = YT.segmentsToPlainText(segments);
+
+        if (!plainText.trim()) throw new Error('NO_CAPTIONS');
+
+        // Map segments to chapters if available
+        const chapterData = chapters ? YT.mapSegmentsToChapters(segments, chapters) : null;
+
+        // AI processing — no fallback, quality or nothing
+        const swMessage = {
+          type: 'PROCESS_TRANSCRIPT',
+          transcript: plainText,
+          durationSeconds: videoInfo?.lengthSeconds || 0,
+        };
+        if (chapterData && chapterData.length > 0) {
+          swMessage.chapters = chapterData;
+        }
+        if (extendedData) {
+          swMessage.videoContext = {
+            title: videoInfo?.title || '',
+            description: extendedData.description || '',
+            keywords: extendedData.keywords || [],
+            category: extendedData.category || '',
+          };
+        }
+        const response = await sendToSW(swMessage);
+
+        if (!response?.success || !response.data?.sections?.length) {
+          throw new Error(response?.error || 'AI_PROCESSING_FAILED');
+        }
+
+        processedData = response.data;
+        cachedResult = processedData;
+        cachedVideoId = videoId;
+
+        // Hide loading, wait for exit animation
+        YT.hideLoading(stage);
+        await new Promise(r => setTimeout(r, 450));
+      }
+
+      const content = YT.getContentArea();
+      if (!content) { closeReader(); return; }
+
+      // Initialize engine
+      timeline = new YT.Timeline();
+      timeline.load(processedData, wpm);
+
+      // Map chapter thumbnail URLs onto timeline sections
+      if (chapters) {
+        for (let i = 0; i < Math.min(chapters.length, timeline.sections.length); i++) {
+          const thumbs = chapters[i].thumbnails;
+          if (thumbs?.length) {
+            timeline.sections[i].thumbnailUrl = thumbs[thumbs.length - 1].url;
+          }
+        }
+      }
+
+      animator = new YT.Animator(content, timeline);
+
+      controls = new YT.Controls(stage, timeline, {
+        onClose: closeReader,
+        onModeChange: (mode) => animator.setMode(mode),
+        getCurrentMode: () => animator.mode,
+        onOutlineToggle: () => outline?.toggle(),
+      });
+
+      outline = new YT.Outline(stage, timeline);
+      overview = new YT.Overview(stage, timeline);
+
+      if (videoInfo?.lengthSeconds) {
+        controls.setVideoDuration(videoInfo.lengthSeconds);
+      }
+
+      // Toggle paused class for text selection
+      timeline.on('play', () => stage.classList.remove('ytpres-paused'));
+      timeline.on('pause', () => stage.classList.add('ytpres-paused'));
+
+      // Click-to-pause on content area (ignore text selection & double-clicks)
+      const contentArea = YT.getContentArea();
+      if (contentArea) {
+        let mouseDownPos = null;
+        let clickTimer = null;
+        contentArea.addEventListener('mousedown', (e) => {
+          mouseDownPos = { x: e.clientX, y: e.clientY };
+        });
+        contentArea.addEventListener('dblclick', () => {
+          // Cancel pending single-click toggle so double-click selects text
+          if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+        });
+        contentArea.addEventListener('click', (e) => {
+          // Ignore clicks on buttons/controls
+          if (e.target.closest('button, a, .ytpres-controls')) return;
+          // Ignore if mouse moved (drag-to-select)
+          if (mouseDownPos) {
+            const dx = Math.abs(e.clientX - mouseDownPos.x);
+            const dy = Math.abs(e.clientY - mouseDownPos.y);
+            if (dx > 5 || dy > 5) return;
+          }
+          // Delay toggle to distinguish single-click from double-click
+          if (clickTimer) clearTimeout(clickTimer);
+          clickTimer = setTimeout(() => {
+            clickTimer = null;
+            // Ignore if text is selected
+            const sel = window.getSelection();
+            if (sel && sel.toString().trim().length > 0) return;
+            timeline.togglePlay();
+          }, 250);
+        });
+      }
+
+      // Experience events — queue section transitions to prevent overlap
+      let sectionTransitionBusy = false;
+
+      // Celebrate fires when entering a new section (index change)
+      timeline.on('sectionChange', () => {
+        const stg = YT.getStage();
+        if (stg) YT.celebrate(stg);
+      });
+
+      // Breathe + recap fire at the END of the last thought's displayMs, while
+      // the scheduled gap is still running — so they show at the right time.
+      timeline.on('sectionEnd', async ({ section }) => {
+        if (sectionTransitionBusy) return; // skip if a previous transition is still running
+        const cnt = YT.getContentArea();
+        if (cnt && section?.recap) {
+          sectionTransitionBusy = true;
+          window.YTPresenter.sectionTransitionBusy = true;
+          try {
+            await YT.showBreathe(cnt, section.thumbnailUrl);
+            await YT.showRecap(cnt, section.recap, timeline.wpm, section.thumbnailUrl);
+          } finally {
+            sectionTransitionBusy = false;
+            window.YTPresenter.sectionTransitionBusy = false;
+          }
+        }
+      });
+
+      timeline.on('end', async () => {
+        // Wait for any in-flight breathe/recap to finish before showing takeaways
+        while (sectionTransitionBusy) {
+          await new Promise(r => setTimeout(r, 200));
+        }
+        const cnt = YT.getContentArea();
+        if (cnt && processedData.takeaways?.length > 0) {
+          setTimeout(() => YT.showTakeaways(cnt, processedData.takeaways, extendedData?.endscreenVideos), 500);
+        }
+      });
+
+      // Render first thought and start
+      const firstThought = timeline.thoughts[0];
+      if (firstThought) await animator.render(firstThought, 0);
+      timeline.play();
+
+    } catch (err) {
+      console.error('[YTPresenter] Error:', err);
+      const type = err.message === 'NO_CAPTIONS' ? 'no_captions' : err.message;
+      showError(type, null, err.message);
+    }
+  }
+
+  // ——— Close Reader ———
+  function closeReader() {
+    if (timeline) { timeline.destroy(); timeline = null; }
+    if (animator) { animator.destroy(); animator = null; }
+    if (controls) { controls.destroy(); controls = null; }
+    if (outline) { outline.destroy(); outline = null; }
+    if (overview) { overview.destroy(); overview = null; }
+
+    const stage = YT.getStage();
+    if (stage) YT.removeAmbient(stage);
+
+    YT.restorePlayer();
+    active = false;
+  }
+
+  // ——— Error UI ———
+  function showError(type, stage, detail) {
+    if (!stage) {
+      stage = YT.getStage() || YT.replacePlayer();
+      if (!stage) return;
+    }
+
+    const content = stage.querySelector('.ytpres-content') || stage;
+    content.innerHTML = '';
+
+    const errors = {
+      no_captions: {
+        title: 'No Captions Available',
+        message: 'This video doesn\'t have captions. YTPresenter needs captions to create the reading experience.',
+        actions: '<button class="ytpres-error-btn" id="ytpres-close-error-btn">Close</button>',
+      },
+      OLLAMA_NOT_RUNNING: {
+        title: 'Ollama Not Running',
+        message: 'YTPresenter requires Ollama for AI-restructured prose. Start it and try again.',
+        actions: `
+          <code data-cmd="ollama serve">ollama serve</code>
+          <div class="ytpres-error-actions">
+            <button class="ytpres-error-btn" id="ytpres-close-error-btn">Close</button>
+          </div>
+        `,
+      },
+      MODEL_NOT_FOUND: {
+        title: 'Model Not Found',
+        message: 'Pull the required model and try again.',
+        actions: `
+          <code data-cmd="ollama pull llama3.2">ollama pull llama3.2</code>
+          <div class="ytpres-error-actions">
+            <button class="ytpres-error-btn" id="ytpres-close-error-btn">Close</button>
+          </div>
+        `,
+      },
+      AI_PROCESSING_FAILED: {
+        title: 'AI Processing Failed',
+        message: 'The AI couldn\'t process this transcript. Make sure Ollama is running and try again.',
+        actions: '<button class="ytpres-error-btn" id="ytpres-close-error-btn">Close</button>',
+      },
+      generic: {
+        title: 'Something Went Wrong',
+        message: detail || 'An unexpected error occurred.',
+        actions: '<button class="ytpres-error-btn" id="ytpres-close-error-btn">Close</button>',
+      },
+    };
+
+    const err = errors[type] || errors.generic;
+
+    const el = document.createElement('div');
+    el.className = 'ytpres-error';
+    el.innerHTML = `
+      <div class="ytpres-error-title">${err.title}</div>
+      <div class="ytpres-error-message">${err.message}</div>
+      ${err.actions}
+    `;
+    content.appendChild(el);
+
+    // Copy command on click
+    el.querySelectorAll('code[data-cmd]').forEach(code => {
+      code.addEventListener('click', () => {
+        const cmd = code.dataset.cmd;
+        navigator.clipboard.writeText(cmd);
+        const original = code.textContent;
+        code.textContent = 'Copied!';
+        setTimeout(() => code.textContent = original, 1500);
+      });
+    });
+
+    el.querySelector('#ytpres-close-error-btn')?.addEventListener('click', closeReader);
+  }
+
+  // ——— Keyboard Shortcuts ———
+  document.addEventListener('keydown', (e) => {
+    if (!active || !timeline) return;
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+
+    // Stop event from reaching YouTube's player controls
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+
+    switch (e.key) {
+      case ' ':
+        e.preventDefault();
+        timeline.togglePlay();
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        timeline.prev();
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        timeline.next();
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        if (controls) {
+          controls.wpm = YT.nextSpeed(controls.wpm);
+          timeline.setWpm(controls.wpm);
+          controls.updateSpeedLabel();
+        }
+        break;
+      case 'ArrowDown':
+        e.preventDefault();
+        if (controls) {
+          controls.wpm = YT.prevSpeed(controls.wpm);
+          timeline.setWpm(controls.wpm);
+          controls.updateSpeedLabel();
+        }
+        break;
+      case 'b':
+      case 'B':
+        if (animator) animator.toggleBionic();
+        break;
+      case 't':
+      case 'T':
+        closeReader();
+        break;
+      case 'f':
+      case 'F':
+        toggleFullscreen();
+        break;
+      case '1':
+        if (animator) { animator.setMode('flow'); controls?.updateModeLabel('flow'); }
+        break;
+      case '2':
+        if (animator) { animator.setMode('stack'); controls?.updateModeLabel('stack'); }
+        break;
+      case '3':
+        if (animator) { animator.setMode('impact'); controls?.updateModeLabel('impact'); }
+        break;
+      case 'o':
+      case 'O':
+        if (outline) outline.toggle();
+        break;
+      case 's':
+      case 'S':
+        if (overview) overview.toggle();
+        break;
+    }
+  }, true);
+
+
+  // ——— Fullscreen ———
+  function toggleFullscreen() {
+    const stage = YT.getStage();
+    if (!stage) return;
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      stage.requestFullscreen().catch(() => {});
+    }
+  }
+
+  // ——— SPA Cleanup ———
+  document.addEventListener('yt-navigate-start', () => {
+    if (active) closeReader();
+    YT.removeReadButton();
+    cachedResult = null;
+    cachedVideoId = null;
+  });
+})();
