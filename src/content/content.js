@@ -144,14 +144,9 @@
       timeline = new YT.Timeline();
       timeline.load(processedData, wpm);
 
-      // Map chapter thumbnail URLs onto timeline sections
+      // Map chapter thumbnails onto timeline sections
       if (chapters) {
-        for (let i = 0; i < Math.min(chapters.length, timeline.sections.length); i++) {
-          const thumbs = chapters[i].thumbnails;
-          if (thumbs?.length) {
-            timeline.sections[i].thumbnailUrl = thumbs[thumbs.length - 1].url;
-          }
-        }
+        mapChapterThumbnails(chapters, timeline.sections, extendedData, videoInfo);
       }
 
       animator = new YT.Animator(content, timeline);
@@ -424,6 +419,93 @@
       document.exitFullscreen();
     } else {
       stage.requestFullscreen().catch(() => {});
+    }
+  }
+
+  // ——— Storyboard-based chapter thumbnails ———
+
+  function parseStoryboardSpec(spec, videoDurationSec) {
+    const parts = spec.split('|');
+    if (parts.length < 2) return null;
+
+    const baseUrl = parts[0];
+    // Use highest quality level (last config)
+    const levelIndex = parts.length - 2;
+    const fields = parts[parts.length - 1].split('#');
+    if (fields.length < 6) return null;
+
+    const width = parseInt(fields[0]);
+    const height = parseInt(fields[1]);
+    const frameCount = parseInt(fields[2]);
+    const cols = parseInt(fields[3]);
+    const rows = parseInt(fields[4]);
+    const interval = parseInt(fields[5]); // ms between frames, 0 = auto
+    const namePattern = fields[6] || 'M$M';
+    const signature = fields[7] || '';
+
+    const intervalMs = interval > 0 ? interval : Math.floor(videoDurationSec * 1000 / frameCount);
+
+    return { baseUrl, levelIndex, width, height, frameCount, cols, rows, intervalMs, namePattern, signature };
+  }
+
+  function getStoryboardFrame(sb, timestampMs) {
+    const frameIndex = Math.min(Math.floor(timestampMs / sb.intervalMs), sb.frameCount - 1);
+    const framesPerSheet = sb.cols * sb.rows;
+    const sheetIndex = Math.floor(frameIndex / framesPerSheet);
+    const posInSheet = frameIndex % framesPerSheet;
+    const col = posInSheet % sb.cols;
+    const row = Math.floor(posInSheet / sb.cols);
+
+    const resolvedName = sb.namePattern.replace('$M', sheetIndex);
+    let url = sb.baseUrl.replace('$L', sb.levelIndex).replace('$N', resolvedName);
+    if (sb.signature) {
+      url += (url.includes('?') ? '&' : '?') + 'sigh=' + sb.signature;
+    }
+
+    return {
+      url,
+      sprite: {
+        x: col * sb.width,
+        y: row * sb.height,
+        w: sb.width,
+        h: sb.height,
+        sw: sb.cols * sb.width,
+        sh: sb.rows * sb.height,
+      },
+    };
+  }
+
+  function mapChapterThumbnails(chapters, sections, extended, vInfo) {
+    const count = Math.min(chapters.length, sections.length);
+
+    // First pass: assign YouTube-provided thumbnails
+    const urls = [];
+    for (let i = 0; i < count; i++) {
+      const thumbs = chapters[i].thumbnails;
+      if (thumbs?.length) {
+        const url = thumbs[thumbs.length - 1].url;
+        sections[i].thumbnailUrl = url;
+        urls.push(url);
+      }
+    }
+
+    // Detect duplicate thumbnails: if all URLs are the same, they're generic
+    const allSame = urls.length > 1 && urls.every(u => u === urls[0]);
+    if (!allSame) return; // thumbnails are unique — keep them
+
+    // Try storyboard fallback
+    const spec = extended?.storyboardSpec;
+    const duration = vInfo?.lengthSeconds || 0;
+    if (!spec || !duration) return;
+
+    const sb = parseStoryboardSpec(spec, duration);
+    if (!sb) return;
+
+    console.log('[YTPresenter] Chapter thumbnails are identical — using storyboard frames');
+
+    for (let i = 0; i < count; i++) {
+      const frame = getStoryboardFrame(sb, chapters[i].startMs);
+      sections[i].thumbnailUrl = frame;
     }
   }
 

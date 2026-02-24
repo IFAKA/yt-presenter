@@ -418,6 +418,11 @@ html:not([dark]) .ytpres-speed-menu-item:hover {
 }
 
 /* ——— Experience: Takeaways Card ——— */
+.ytpres-content:has(.ytpres-takeaways) {
+  align-items: flex-start;
+  overflow-y: auto;
+  padding: 48px 24px;
+}
 .ytpres-takeaways {
   text-align: left;
   max-width: 55ch;

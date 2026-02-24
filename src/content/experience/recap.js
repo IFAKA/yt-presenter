@@ -14,12 +14,19 @@ window.YTPresenter = window.YTPresenter || {};
     return Math.max(2000, (wordCount / (wpm || 250)) * 60000);
   };
 
-  window.YTPresenter.showRecap = function(container, recapText, wpm, thumbnailUrl) {
+  window.YTPresenter.showRecap = function(container, recapText, wpm, thumbnail) {
     window.YTPresenter.hideRecap(container);
 
-    const thumbHtml = thumbnailUrl
-      ? `<img class="ytpres-recap-thumb" src="${escapeHtml(thumbnailUrl)}" alt="">`
-      : '';
+    let thumbHtml = '';
+    if (thumbnail) {
+      if (typeof thumbnail === 'string') {
+        thumbHtml = `<img class="ytpres-recap-thumb" src="${escapeHtml(thumbnail)}" alt="">`;
+      } else if (thumbnail.url) {
+        // Storyboard sprite: use a div with background-position instead of img
+        const s = thumbnail.sprite;
+        thumbHtml = `<div class="ytpres-recap-thumb" style="background-image: url(${escapeHtml(thumbnail.url)}); background-position: -${s.x}px -${s.y}px; background-size: ${s.sw}px ${s.sh}px; width: 120px; height: 68px"></div>`;
+      }
+    }
 
     const el = document.createElement('div');
     el.className = 'ytpres-recap';

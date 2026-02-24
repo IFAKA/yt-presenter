@@ -2,7 +2,7 @@
 
 window.YTPresenter = window.YTPresenter || {};
 
-window.YTPresenter.showBreathe = function(container, thumbnailUrl) {
+window.YTPresenter.showBreathe = function(container, thumbnail) {
   // Clear previous thought text so transition overlays appear alone
   container.innerHTML = '';
 
@@ -10,8 +10,14 @@ window.YTPresenter.showBreathe = function(container, thumbnailUrl) {
   el.className = 'ytpres-breathe';
 
   let thumbHtml = '';
-  if (thumbnailUrl) {
-    thumbHtml = `<div class="ytpres-breathe-thumb" style="background-image: url(${thumbnailUrl})"></div>`;
+  if (thumbnail) {
+    if (typeof thumbnail === 'string') {
+      thumbHtml = `<div class="ytpres-breathe-thumb" style="background-image: url(${thumbnail})"></div>`;
+    } else if (thumbnail.url) {
+      // Storyboard sprite: position background to show the correct frame
+      const s = thumbnail.sprite;
+      thumbHtml = `<div class="ytpres-breathe-thumb" style="background-image: url(${thumbnail.url}); background-position: -${s.x}px -${s.y}px; background-size: ${s.sw}px ${s.sh}px"></div>`;
+    }
   }
 
   el.innerHTML = thumbHtml + '<div class="ytpres-breathe-glow"></div>';

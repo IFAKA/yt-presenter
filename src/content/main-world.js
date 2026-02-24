@@ -168,6 +168,13 @@
         }
       }
 
+      // Storyboard spec (sprite sheets of video frames at regular intervals)
+      let storyboardSpec = null;
+      const storyboards = player?.storyboards;
+      if (storyboards?.playerStoryboardSpecRenderer?.spec) {
+        storyboardSpec = storyboards.playerStoryboardSpecRenderer.spec;
+      }
+
       return {
         maxThumbnail,
         keywords,
@@ -180,6 +187,7 @@
         channelAvatar,
         channelSubscribers,
         descriptionTimestamps,
+        storyboardSpec,
       };
     } catch (e) {
       console.warn('[YTPresenter] Failed to extract extended data:', e);
