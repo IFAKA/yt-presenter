@@ -31,8 +31,10 @@ window.YTPresenter = window.YTPresenter || {};
     const stage = document.createElement('div');
     stage.id = 'ytpres-stage';
     stage.className = 'ytpres-root';
-    stage.style.width = `${rect.width}px`;
-    stage.style.height = `${rect.height}px`;
+    const w = rect.width || 854;
+    const h = rect.height || 480;
+    stage.style.width = '100%';
+    stage.style.aspectRatio = `${w} / ${h}`;
 
     const content = document.createElement('div');
     content.className = 'ytpres-content';

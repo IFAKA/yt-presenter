@@ -7,17 +7,23 @@ window.YTPresenter.Outline = class Outline {
     this.stage = stage;
     this.timeline = timeline;
     this.el = null;
-    this.visible = true;
+    this.visible = false;
     this._items = [];
 
     this._create();
     this._bindEvents();
-    this._applyContentShift();
+
+    // Restore saved state; default is closed
+    chrome.storage.local.get('outlineVisible', ({ outlineVisible }) => {
+      this.visible = outlineVisible === true;
+      this.el.classList.toggle('ytpres-outline-visible', this.visible);
+      this._applyContentShift();
+    });
   }
 
   _create() {
     this.el = document.createElement('div');
-    this.el.className = 'ytpres-outline ytpres-outline-visible';
+    this.el.className = 'ytpres-outline';
 
     const title = document.createElement('div');
     title.className = 'ytpres-outline-title';
@@ -88,6 +94,7 @@ window.YTPresenter.Outline = class Outline {
     this.visible = !this.visible;
     this.el.classList.toggle('ytpres-outline-visible', this.visible);
     this._applyContentShift();
+    chrome.storage.local.set({ outlineVisible: this.visible });
   }
 
   _applyContentShift() {

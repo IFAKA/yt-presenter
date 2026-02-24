@@ -763,7 +763,7 @@ html[dark] .ytpres-read-btn:hover {
   bottom: calc(100% + 8px);
   left: 50%;
   transform: translateX(-50%);
-  max-width: 280px;
+  width: 280px;
   padding: 8px 12px;
   background: var(--ytpres-panel-bg);
   backdrop-filter: blur(12px);

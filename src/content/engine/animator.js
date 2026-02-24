@@ -53,15 +53,18 @@ window.YTPresenter.Animator = class Animator {
 
   async render(thought, index) {
     if (index === this.lastRenderedIndex) return;
+
+    // Don't render during section transitions — breathe/recap own the container.
+    // lastRenderedIndex is intentionally left unchanged so the thought re-renders
+    // once the transition finishes and the next thoughtChange fires.
+    if (window.YTPresenter.sectionTransitionBusy) return;
+
     const gen = ++this.renderGeneration;
 
     // Clear any lingering experience overlays (recap, breathe) so they
-    // don't coexist with the next thought — but only when no section
-    // transition is actively running (breathe/recap control their own DOM).
-    if (!window.YTPresenter.sectionTransitionBusy) {
-      this.container.querySelectorAll('.ytpres-recap, .ytpres-breathe, .ytpres-takeaways')
-        .forEach(el => el.remove());
-    }
+    // don't coexist with the next thought.
+    this.container.querySelectorAll('.ytpres-recap, .ytpres-breathe, .ytpres-takeaways')
+      .forEach(el => el.remove());
 
     const effectiveMode = this.mode === 'flow' ? (thought.mode || 'flow') : this.mode;
     const layout = this.layouts[effectiveMode] || this.layouts.flow;

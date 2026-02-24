@@ -81,11 +81,6 @@
       return;
     }
 
-    if (!captionTracks) {
-      showError('no_captions');
-      return;
-    }
-
     active = true;
 
     const stage = YT.replacePlayer();

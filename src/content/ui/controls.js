@@ -43,7 +43,7 @@ window.YTPresenter.Controls = class Controls {
         </div>
         <div class="ytpres-controls-right">
           <button class="ytpres-btn ytpres-btn-speed" title="Speed (↑/↓)">
-            <span class="ytpres-speed-label">Normal</span>
+            <span class="ytpres-speed-label"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="vertical-align:-2px;margin-right:3px"><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 12l4.5-4.5"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg>Normal</span>
           </button>
           <button class="ytpres-btn ytpres-btn-outline" title="Outline (O)">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>
@@ -264,6 +264,7 @@ window.YTPresenter.Controls = class Controls {
         this.updateSpeedLabel();
         this._updateSpeedMenuActive();
         this._closeSpeedMenu();
+        chrome.storage.local.set({ wpm });
       });
       menu.appendChild(item);
     });
@@ -316,7 +317,13 @@ window.YTPresenter.Controls = class Controls {
   }
 
   updateSpeedLabel() {
-    this.el.querySelector('.ytpres-speed-label').textContent = window.YTPresenter.getSpeedLabel(this.wpm);
+    const label = window.YTPresenter.getSpeedLabel(this.wpm);
+    const el = this.el.querySelector('.ytpres-speed-label');
+    if (label === 'Normal') {
+      el.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="vertical-align:-2px;margin-right:3px"><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 12l4.5-4.5"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg>Normal';
+    } else {
+      el.textContent = label;
+    }
   }
 
   setVideoDuration(seconds) {
