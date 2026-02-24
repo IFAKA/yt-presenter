@@ -61,7 +61,7 @@ export async function generate({ model, prompt, system, format = 'json', signal,
   const res = await fetch(`${OLLAMA_BASE}/api/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, prompt, system, format, stream: useStream, options: { num_ctx: 16384 } }),
+    body: JSON.stringify({ model, prompt, system, format, stream: useStream }),
     signal: combinedSignal,
   });
 

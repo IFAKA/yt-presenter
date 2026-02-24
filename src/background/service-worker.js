@@ -3,10 +3,10 @@ import { buildRestructureRequest, splitIntoSentenceChunks, buildChapterRequest, 
 
 const DEFAULT_MODEL = 'qwen2.5:7b';
 
-// Single pass if video is under 90 minutes OR transcript under 10k words
-// Chunk only for very long content where output JSON gets unreliable
-const SINGLE_PASS_DURATION = 90 * 60;  // 90 minutes in seconds
-const SINGLE_PASS_WORD_LIMIT = 10000;  // fallback if duration unknown
+// Single pass if video is under ~20 minutes OR transcript under 3500 words
+// Above that, chunk to stay within the model's native context window
+const SINGLE_PASS_DURATION = 20 * 60;  // 20 minutes in seconds
+const SINGLE_PASS_WORD_LIMIT = 3500;   // fallback if duration unknown
 
 async function getModel() {
   try {

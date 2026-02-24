@@ -193,15 +193,16 @@ export function buildChapterRequest(title, text, model) {
 }
 
 // Sub-chunk a single chapter if it exceeds the word limit
-export function splitChapterIntoSubChunks(text, targetWords = 8000) {
+export function splitChapterIntoSubChunks(text, targetWords = 3500) {
   const wordCount = text.split(/\s+/).length;
   if (wordCount <= targetWords) return [text];
   return splitIntoSentenceChunks(text, targetWords);
 }
 
 // Split long transcripts on sentence boundaries
-// Target ~8000 words per chunk with ~2 sentence overlap
-export function splitIntoSentenceChunks(text, targetWords = 8000) {
+// Target ~3500 words per chunk to fit within a model's native context window
+// (~4500 tokens input + ~600 token system prompt + ~2000 token output ≈ 7K total)
+export function splitIntoSentenceChunks(text, targetWords = 3500) {
   // Split into sentences (handles ., !, ? followed by space or end)
   const sentences = text.match(/[^.!?]*[.!?]+[\s]?|[^.!?]+$/g) || [text];
 
