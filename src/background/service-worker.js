@@ -1,26 +1,42 @@
 import { checkHealth, checkModel, generate, pickBestModel } from './ollama.js';
 import { buildRestructureRequest, splitIntoSentenceChunks, buildChapterRequest, splitChapterIntoSubChunks, condenseTranscript, buildArcRequest, buildArcContext } from './prompts.js';
 
-const DEFAULT_MODEL = 'qwen2.5:7b';
-
 // Single pass if video is under ~20 minutes OR transcript under 3500 words
 // Above that, chunk to stay within the model's native context window
 const SINGLE_PASS_DURATION = 20 * 60;  // 20 minutes in seconds
 const SINGLE_PASS_WORD_LIMIT = 3500;   // fallback if duration unknown
 
+// Returns the model name to use, or null if none is available.
+// Errors are surfaced as OLLAMA_NOT_RUNNING / NO_MODELS_INSTALLED in the pipeline.
 async function getModel() {
   try {
-    const result = await chrome.storage.local.get('model');
-    if (result.model) return result.model;
-    // No saved model — try to auto-select the best available
     const health = await checkHealth();
-    if (health.running && health.modelDetails?.length) {
-      const best = pickBestModel(health.modelDetails);
-      if (best) return best.name;
+    if (!health.running) return null;
+
+    const availableModels = health.models;
+
+    const result = await chrome.storage.local.get('model');
+    if (result.model) {
+      // Verify the saved model is still installed
+      const stillAvailable = availableModels.some(
+        m => m === result.model || m.startsWith(result.model + ':')
+      );
+      if (stillAvailable) return result.model;
+      // Saved model is gone — clear it and fall through to auto-select
+      chrome.storage.local.remove('model');
     }
-    return DEFAULT_MODEL;
+
+    // Auto-select the best available model
+    if (health.modelDetails?.length) {
+      const best = pickBestModel(health.modelDetails);
+      if (best) {
+        chrome.storage.local.set({ model: best.name });
+        return best.name;
+      }
+    }
+    return null;
   } catch {
-    return DEFAULT_MODEL;
+    return null;
   }
 }
 
@@ -96,20 +112,17 @@ function validateArc(data) {
 }
 
 async function processTranscript(transcript, sendProgress, durationSeconds = 0, videoContext = null, signal = null) {
-  const model = await getModel();
-
   sendProgress({ stage: 'connecting', message: 'Connecting to Ollama…' });
   const health = await checkHealth();
-  if (!health.running) {
-    throw new Error('OLLAMA_NOT_RUNNING');
-  }
+  if (!health.running) throw new Error('OLLAMA_NOT_RUNNING');
+  if (!health.models?.length) throw new Error('NO_MODELS_INSTALLED');
+
+  sendProgress({ stage: 'model_check', message: 'Selecting model…' });
+  const model = await getModel();
+  if (!model) throw new Error('NO_MODELS_INSTALLED');
 
   sendProgress({ stage: 'model_check', message: `Loading ${model}…` });
-  const modelCheck = await checkModel(model);
-  if (!modelCheck.available) {
-    throw new Error('MODEL_NOT_FOUND');
-  }
-  const resolvedModel = modelCheck.resolvedModel;
+  const resolvedModel = model;
 
   // Arc analysis pass — non-fatal, degrades gracefully to current behavior
   sendProgress({ stage: 'arc_analysis', message: 'Analyzing narrative arc…' });
@@ -210,16 +223,17 @@ function validateAndNormalize(data) {
 
 // Chapter-aware pipeline: process each chapter independently
 async function processWithChapters(chapters, sendProgress, signal = null) {
-  const model = await getModel();
-
   sendProgress({ stage: 'connecting', message: 'Connecting to Ollama…' });
   const health = await checkHealth();
   if (!health.running) throw new Error('OLLAMA_NOT_RUNNING');
+  if (!health.models?.length) throw new Error('NO_MODELS_INSTALLED');
+
+  sendProgress({ stage: 'model_check', message: 'Selecting model…' });
+  const model = await getModel();
+  if (!model) throw new Error('NO_MODELS_INSTALLED');
 
   sendProgress({ stage: 'model_check', message: `Loading ${model}…` });
-  const modelCheck = await checkModel(model);
-  if (!modelCheck.available) throw new Error('MODEL_NOT_FOUND');
-  const resolvedModel = modelCheck.resolvedModel;
+  const resolvedModel = model;
 
   // Count total LLM calls for progress (chapters may be sub-chunked)
   const chapterChunks = chapters.map(ch => splitChapterIntoSubChunks(ch.text));

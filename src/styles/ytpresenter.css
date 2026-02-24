@@ -890,6 +890,7 @@ html[dark] .ytpres-read-btn:hover {
   filter: var(--ytpres-backdrop-filter);
   opacity: var(--ytpres-backdrop-opacity);
   z-index: 0;
+  pointer-events: none;
   transition: opacity 0.4s ease;
 }
 .ytpres-loading {

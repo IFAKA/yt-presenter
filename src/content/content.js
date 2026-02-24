@@ -259,8 +259,9 @@
       // Suppress port disconnect errors (user navigated away during processing)
       if (err.message === 'PORT_DISCONNECTED') return;
       console.error('[YTPresenter] Error:', err);
-      const type = err.message === 'NO_CAPTIONS' ? 'no_captions' : err.message;
-      showError(type, null, err.message);
+      const [rawType, detail] = err.message.split('|');
+      const type = rawType === 'NO_CAPTIONS' ? 'no_captions' : rawType;
+      showError(type, null, detail || rawType);
     }
   }
 
@@ -306,9 +307,9 @@
           </div>
         `,
       },
-      MODEL_NOT_FOUND: {
-        title: 'Model Not Found',
-        message: 'Pull the required model and try again.',
+      NO_MODELS_INSTALLED: {
+        title: 'No Models Installed',
+        message: 'Pull a model in your terminal, then try again. Any model works — llama3.2 is a good start.',
         actions: `
           <code data-cmd="ollama pull llama3.2">ollama pull llama3.2</code>
           <div class="ytpres-error-actions">
