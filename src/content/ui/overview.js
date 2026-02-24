@@ -79,9 +79,7 @@ window.YTPresenter.Overview = class Overview {
   }
 
   _bindEvents() {
-    this._onTick = ({ index }) => this._updateCurrent(index);
     this._onThoughtChange = ({ index }) => this._updateCurrent(index);
-    this.timeline.on('tick', this._onTick);
     this.timeline.on('thoughtChange', this._onThoughtChange);
   }
 
@@ -122,7 +120,6 @@ window.YTPresenter.Overview = class Overview {
 
   destroy() {
     if (this.timeline) {
-      this.timeline.off('tick', this._onTick);
       this.timeline.off('thoughtChange', this._onThoughtChange);
     }
     if (this.el) this.el.remove();

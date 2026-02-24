@@ -37,24 +37,6 @@ function getTierDot(paramNum) {
   return '\u{1F7E0}';                      // orange circle
 }
 
-function pickBestModel(details, maxParams) {
-  if (!details?.length) return null;
-  const ranked = details
-    .map(m => ({ ...m, paramNum: parseParamSize(m.paramSize) }))
-    .filter(m => m.paramNum <= maxParams)
-    .sort((a, b) => a.paramNum - b.paramNum);
-  // Largest model that fits in the sweet spot (<=9B) AND within device cap
-  const sweet = ranked.filter(m => m.paramNum <= 9);
-  if (sweet.length) return sweet[sweet.length - 1];
-  // If no sweet spot models fit, pick smallest that fits device
-  if (ranked.length) return ranked[0];
-  // Nothing fits device cap — fall back to smallest installed overall
-  const all = details
-    .map(m => ({ ...m, paramNum: parseParamSize(m.paramSize) }))
-    .sort((a, b) => a.paramNum - b.paramNum);
-  return all[0];
-}
-
 function populateModelDropdown(modelDetails, savedModel) {
   const select = document.getElementById('model-select');
   select.innerHTML = '';
@@ -108,15 +90,15 @@ function populateModelDropdown(modelDetails, savedModel) {
     }
   }
 
-  // Auto-select best model within device limits
-  const best = pickBestModel(modelDetails, maxParams);
-  if (best) {
-    select.value = best.name;
-    chrome.storage.local.set({ model: best.name });
-    return best.name;
-  }
+  // Auto-select best model via service worker
+  chrome.runtime.sendMessage({ type: 'PICK_BEST_MODEL' }, (resp) => {
+    if (resp?.model) {
+      select.value = resp.model;
+      chrome.storage.local.set({ model: resp.model });
+    }
+  });
 
-  return sorted[0].name;
+  return sorted[0]?.name || null;
 }
 
 async function checkStatus() {

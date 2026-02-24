@@ -30,8 +30,6 @@
       "js": [
         "vendor/katex/katex.min.js",
         "src/content/transcript/extractor.js",
-        "src/content/transcript/parser.js",
-
         "src/content/ui/injector.js",
         "src/content/ui/player-replacer.js",
         "src/content/ui/loading.js",
@@ -45,9 +43,7 @@
         "src/content/ui/overview.js",
         "src/content/experience/recap.js",
         "src/content/experience/takeaways.js",
-        "src/content/experience/breathe.js",
-        "src/content/experience/progress-celebration.js",
-        "src/content/experience/ambient.js",
+        "src/content/experience/transitions.js",
         "src/content/content.js"
       ],
       "css": ["vendor/katex/katex.min.css", "src/styles/ytpresenter.css"],

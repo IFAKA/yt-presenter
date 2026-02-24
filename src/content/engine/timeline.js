@@ -39,6 +39,15 @@ window.YTPresenter.Timeline = class Timeline {
       }
     }
 
+    // Pre-compute first thought index for each section
+    this.sectionStarts = [];
+    for (let i = 0; i < this.thoughts.length; i++) {
+      const si = this.thoughts[i].sectionIndex;
+      if (this.sectionStarts[si] === undefined) {
+        this.sectionStarts[si] = i;
+      }
+    }
+
     this.buildSchedule();
     this.currentIndex = 0;
     this.currentTime = 0;
@@ -138,6 +147,7 @@ window.YTPresenter.Timeline = class Timeline {
 
     if (this.currentTime >= this.totalDuration) {
       this.playing = false;
+      this.emit('pause');
       this.emit('end');
       return;
     }
@@ -178,10 +188,14 @@ window.YTPresenter.Timeline = class Timeline {
   }
 
   _getIndexAtTime(timeMs) {
-    for (let i = this.schedule.length - 1; i >= 0; i--) {
-      if (timeMs >= this.schedule[i].startMs) return i;
+    const s = this.schedule;
+    let lo = 0, hi = s.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >>> 1;
+      if (s[mid].startMs <= timeMs) lo = mid + 1;
+      else hi = mid - 1;
     }
-    return 0;
+    return Math.max(0, lo - 1);
   }
 
   next() {

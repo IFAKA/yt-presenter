@@ -26,7 +26,6 @@
 
 <!-- Load all content scripts in order -->
 <script src="src/content/transcript/extractor.js"></script>
-<script src="src/content/transcript/parser.js"></script>
 <script src="src/content/transcript/preprocessor.js"></script>
 <script src="src/content/ui/injector.js"></script>
 <script src="src/content/ui/player-replacer.js"></script>
@@ -39,9 +38,7 @@
 <script src="src/content/ui/controls.js"></script>
 <script src="src/content/experience/recap.js"></script>
 <script src="src/content/experience/takeaways.js"></script>
-<script src="src/content/experience/breathe.js"></script>
-<script src="src/content/experience/progress-celebration.js"></script>
-<script src="src/content/experience/ambient.js"></script>
+<script src="src/content/experience/transitions.js"></script>
 
 <script>
 const YT = window.YTPresenter;
@@ -56,7 +53,7 @@ const log = (name, pass, detail) => {
 
 async function runTests() {
   // Test 1: All modules loaded
-  const modules = ['preprocess','parseJson3','segmentsToPlainText','injectReadButton','removeReadButton',
+  const modules = ['preprocess','segmentsToPlainText','mapSegmentsToChapters','escapeHtml','injectReadButton','removeReadButton',
     'replacePlayer','restorePlayer','getStage','getContentArea','showLoading','updateLoadingProgress','hideLoading',
     'getSpeedLabel','nextSpeed','prevSpeed','getEnergyStyle','applyEntrance','applyExit','buildThoughtHTML',
     'FlowLayout','StackLayout','ImpactLayout','Timeline','Animator','Controls',

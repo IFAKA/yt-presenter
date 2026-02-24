@@ -65,8 +65,8 @@ window.YTPresenter.Controls = class Controls {
 
     // Position markers by time (not index count) so they match the time-based progress fill
     for (let si = 1; si < this.timeline.sections.length; si++) {
-      const firstIdx = this.timeline.thoughts.findIndex(t => t.sectionIndex === si);
-      if (firstIdx < 0) continue;
+      const firstIdx = this.timeline.sectionStarts[si];
+      if (firstIdx == null) continue;
       const startMs = this.timeline.schedule[firstIdx]?.startMs || 0;
       const pct = (startMs / this.timeline.totalDuration) * 100;
       const marker = document.createElement('div');

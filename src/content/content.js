@@ -6,21 +6,6 @@
 
   const YT = window.YTPresenter;
 
-  // ——— Service worker messaging with retry ———
-  async function sendToSW(message, retries = 2) {
-    for (let i = 0; i <= retries; i++) {
-      try {
-        return await chrome.runtime.sendMessage(message);
-      } catch (err) {
-        if (i < retries && /receiving end|could not establish/i.test(err.message)) {
-          await new Promise(r => setTimeout(r, 500));
-          continue;
-        }
-        throw err;
-      }
-    }
-  }
-
   // ——— State ———
   let captionTracks = null;
   let videoInfo = null;
@@ -34,6 +19,7 @@
   let active = false;
   let cachedResult = null;   // cached AI output keyed by videoId
   let cachedVideoId = null;
+  let pipelinePort = null;   // active port to service worker for AI pipeline
 
   // ——— Listen for caption data from MAIN world ———
   window.addEventListener('message', (event) => {
@@ -58,13 +44,35 @@
     }
   });
 
-  // ——— Listen for progress updates from service worker ———
-  chrome.runtime.onMessage.addListener((message) => {
-    if (message.type === 'PROCESSING_PROGRESS') {
-      const stage = YT.getStage();
-      if (stage) YT.updateLoadingProgress(stage, message);
-    }
-  });
+  // ——— Port-based pipeline messaging ———
+  // Sends PROCESS_TRANSCRIPT via a persistent port so that page unload
+  // auto-disconnects and aborts the in-flight Ollama request.
+  function runPipeline(message) {
+    return new Promise((resolve, reject) => {
+      const port = chrome.runtime.connect({ name: 'ytpres-pipeline' });
+      pipelinePort = port;
+
+      port.onMessage.addListener((msg) => {
+        if (msg.type === 'PROCESSING_PROGRESS') {
+          const stage = YT.getStage();
+          if (stage) YT.updateLoadingProgress(stage, msg);
+        } else if (msg.type === 'RESULT') {
+          pipelinePort = null;
+          port.disconnect();
+          if (msg.success) resolve(msg);
+          else reject(new Error(msg.error));
+        }
+      });
+
+      port.onDisconnect.addListener(() => {
+        pipelinePort = null;
+        // If we get here without a RESULT, the port was severed
+        reject(new Error('PORT_DISCONNECTED'));
+      });
+
+      port.postMessage(message);
+    });
+  }
 
   // ——— Main Read Click Handler ———
   async function handleReadClick() {
@@ -122,7 +130,7 @@
             category: extendedData.category || '',
           };
         }
-        const response = await sendToSW(swMessage);
+        const response = await runPipeline(swMessage);
 
         if (!response?.success || !response.data?.sections?.length) {
           throw new Error(response?.error || 'AI_PROCESSING_FAILED');
@@ -247,6 +255,8 @@
       timeline.play();
 
     } catch (err) {
+      // Suppress port disconnect errors (user navigated away during processing)
+      if (err.message === 'PORT_DISCONNECTED') return;
       console.error('[YTPresenter] Error:', err);
       const type = err.message === 'NO_CAPTIONS' ? 'no_captions' : err.message;
       showError(type, null, err.message);
@@ -255,6 +265,7 @@
 
   // ——— Close Reader ———
   function closeReader() {
+    if (pipelinePort) { pipelinePort.disconnect(); pipelinePort = null; }
     if (timeline) { timeline.destroy(); timeline = null; }
     if (animator) { animator.destroy(); animator = null; }
     if (controls) { controls.destroy(); controls = null; }

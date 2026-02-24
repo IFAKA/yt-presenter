@@ -1,5 +1,27 @@
 const OLLAMA_BASE = 'http://localhost:11434';
 
+export function parseParamSize(str) {
+  if (!str) return 0;
+  const match = str.match(/([\d.]+)\s*([BMK])/i);
+  if (!match) return 0;
+  const num = parseFloat(match[1]);
+  const unit = match[2].toUpperCase();
+  if (unit === 'B') return num;
+  if (unit === 'M') return num / 1000;
+  if (unit === 'K') return num / 1000000;
+  return 0;
+}
+
+export function pickBestModel(modelDetails) {
+  if (!modelDetails?.length) return null;
+  const ranked = modelDetails
+    .map(m => ({ ...m, paramNum: parseParamSize(m.paramSize) }))
+    .sort((a, b) => a.paramNum - b.paramNum);
+  // Largest model <= 9B, or smallest available if all > 9B
+  const sweet = ranked.filter(m => m.paramNum <= 9);
+  return sweet.length ? sweet[sweet.length - 1] : ranked[0];
+}
+
 export async function checkHealth() {
   try {
     const res = await fetch(`${OLLAMA_BASE}/api/tags`, { signal: AbortSignal.timeout(3000) });
@@ -30,12 +52,15 @@ export async function checkModel(name) {
   return { available: !!match, resolvedModel: match || null, reason: match ? null : 'model_not_found', models: health.models };
 }
 
-export async function generate({ model, prompt, system, format = 'json', stream = false }) {
+export async function generate({ model, prompt, system, format = 'json', stream = false, signal }) {
+  const timeoutSignal = AbortSignal.timeout(120000);
+  const combinedSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+
   const res = await fetch(`${OLLAMA_BASE}/api/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ model, prompt, system, format, stream }),
-    signal: AbortSignal.timeout(120000),
+    signal: combinedSignal,
   });
 
   if (!res.ok) {

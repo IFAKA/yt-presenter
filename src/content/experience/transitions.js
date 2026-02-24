@@ -1,4 +1,4 @@
-// Breathing pauses at section transitions
+// Between-section visual transitions: breathe pauses, progress celebrations, ambient background
 
 window.YTPresenter = window.YTPresenter || {};
 
@@ -26,4 +26,30 @@ window.YTPresenter.showBreathe = function(container, thumbnail) {
   return new Promise(resolve => {
     setTimeout(() => { el.remove(); resolve(); }, 2500);
   });
+};
+
+window.YTPresenter.celebrate = function(stage) {
+  const el = document.createElement('div');
+  el.className = 'ytpres-celebration';
+  stage.appendChild(el);
+  setTimeout(() => el.remove(), 1500);
+
+  const progressBar = stage.querySelector('.ytpres-progress-bar');
+  if (progressBar) {
+    progressBar.classList.add('ytpres-progress-pulse');
+    setTimeout(() => progressBar.classList.remove('ytpres-progress-pulse'), 600);
+  }
+};
+
+window.YTPresenter.addAmbient = function(stage) {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return null;
+  const el = document.createElement('div');
+  el.className = 'ytpres-ambient';
+  stage.insertBefore(el, stage.firstChild);
+  return el;
+};
+
+window.YTPresenter.removeAmbient = function(stage) {
+  const el = stage.querySelector('.ytpres-ambient');
+  if (el) el.remove();
 };

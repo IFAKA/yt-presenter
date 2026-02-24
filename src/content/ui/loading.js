@@ -9,6 +9,8 @@ window.YTPresenter = window.YTPresenter || {};
     return div.innerHTML;
   }
 
+  window.YTPresenter.escapeHtml = escapeHtml;
+
   function formatViewCount(n) {
     const num = parseInt(n, 10);
     if (!num) return '';

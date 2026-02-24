@@ -8,6 +8,14 @@ window.YTPresenter = window.YTPresenter || {};
 
   const { buildThoughtHTML, applyEntrance, renderMath } = window.YTPresenter;
 
+  function killElements(container, selector) {
+    container.querySelectorAll(selector).forEach(el => {
+      el.getAnimations().forEach(a => a.cancel());
+      el.querySelectorAll('*').forEach(c => c.getAnimations().forEach(a => a.cancel()));
+      el.remove();
+    });
+  }
+
   // ——— Flow Layout ———
   // One thought centered, cross-dissolves between thoughts
   class FlowLayout {
@@ -42,11 +50,7 @@ window.YTPresenter = window.YTPresenter || {};
 
     _killAll() {
       this.currentEl = null;
-      this.container.querySelectorAll('.ytpres-flow').forEach(el => {
-        el.getAnimations().forEach(a => a.cancel());
-        el.querySelectorAll('*').forEach(c => c.getAnimations().forEach(a => a.cancel()));
-        el.remove();
-      });
+      killElements(this.container, '.ytpres-flow');
     }
 
     clear() {
@@ -159,11 +163,7 @@ window.YTPresenter = window.YTPresenter || {};
 
     _killAll() {
       this.currentEl = null;
-      this.container.querySelectorAll('.ytpres-impact').forEach(el => {
-        el.getAnimations().forEach(a => a.cancel());
-        el.querySelectorAll('*').forEach(c => c.getAnimations().forEach(a => a.cancel()));
-        el.remove();
-      });
+      killElements(this.container, '.ytpres-impact');
     }
 
     clear() {

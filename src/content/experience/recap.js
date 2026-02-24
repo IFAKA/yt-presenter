@@ -3,11 +3,7 @@
 window.YTPresenter = window.YTPresenter || {};
 
 (function() {
-  function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-  }
+  const escapeHtml = window.YTPresenter.escapeHtml;
 
   window.YTPresenter.recapDuration = function(recapText, wpm) {
     const wordCount = recapText.split(/\s+/).length;

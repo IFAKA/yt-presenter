@@ -161,11 +161,7 @@ window.YTPresenter = window.YTPresenter || {};
     },
   };
 
-  function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-  }
+  const escapeHtml = window.YTPresenter.escapeHtml;
 
   window.YTPresenter.getEnergyStyle = function(energy) {
     return ENERGY_STYLES[energy] || ENERGY_STYLES.explanation;
@@ -223,48 +219,53 @@ window.YTPresenter = window.YTPresenter || {};
       return d;
     });
 
+    // Batch: hide all words and enable will-change via container classes
+    container.classList.add('ytpres-word-hidden', 'ytpres-word-animating');
+
     const animations = [];
-    words.forEach((word, i) => {
-      word.style.opacity = '0';
-      word.style.willChange = 'transform, opacity';
-
-      const delay = delays[i];
-
-      // Separate opacity and transform animations for depth
-      const opacityAnim = word.animate(
-        [{ opacity: opacityFrom }, { opacity: 1 }],
-        {
-          duration: duration * 0.7,
-          delay,
-          easing: EASING.linear,
-          fill: 'forwards',
-        }
-      );
-
-      const transformAnim = word.animate(
-        [{ transform: transform[0] }, { transform: transform[1] }],
-        {
-          duration,
-          delay,
-          easing,
-          fill: 'forwards',
-        }
-      );
-
-      animations.push(opacityAnim, transformAnim);
-    });
-
-    const cleanup = () => words.forEach(w => { w.style.willChange = ''; });
-
+    // Use rAF to start animations after the class-based hide is painted
     return new Promise(resolve => {
-      const last = animations[animations.length - 1];
-      if (last) {
-        last.onfinish = () => { cleanup(); resolve(); };
-        last.oncancel = () => { cleanup(); resolve(); };
-      } else {
-        cleanup();
-        resolve();
-      }
+      requestAnimationFrame(() => {
+        words.forEach((word, i) => {
+          const delay = delays[i];
+
+          // Separate opacity and transform animations for depth
+          const opacityAnim = word.animate(
+            [{ opacity: opacityFrom }, { opacity: 1 }],
+            {
+              duration: duration * 0.7,
+              delay,
+              easing: EASING.linear,
+              fill: 'forwards',
+            }
+          );
+
+          const transformAnim = word.animate(
+            [{ transform: transform[0] }, { transform: transform[1] }],
+            {
+              duration,
+              delay,
+              easing,
+              fill: 'forwards',
+            }
+          );
+
+          animations.push(opacityAnim, transformAnim);
+        });
+
+        const cleanup = () => {
+          container.classList.remove('ytpres-word-hidden', 'ytpres-word-animating');
+        };
+
+        const last = animations[animations.length - 1];
+        if (last) {
+          last.onfinish = () => { cleanup(); resolve(); };
+          last.oncancel = () => { cleanup(); resolve(); };
+        } else {
+          cleanup();
+          resolve();
+        }
+      });
     });
   }
 
@@ -396,19 +397,4 @@ window.YTPresenter = window.YTPresenter || {};
     });
   };
 
-  // ——— Cross-fade helper ———
-  // Removes old element immediately before creating new one.
-  // No overlap — guarantees at most one thought element at a time.
-  window.YTPresenter.crossFade = async function(container, exitEl, showFn) {
-    if (!exitEl) {
-      return showFn();
-    }
-
-    // Cancel any running animations on the old element and remove it immediately
-    exitEl.getAnimations().forEach(a => a.cancel());
-    exitEl.querySelectorAll('*').forEach(child => child.getAnimations().forEach(a => a.cancel()));
-    exitEl.remove();
-
-    return showFn();
-  };
 })();

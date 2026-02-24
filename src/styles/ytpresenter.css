@@ -12,6 +12,21 @@ html[dark] {
   --ytpres-dim: rgba(255,255,255,0.25);
   --ytpres-controls-bg: linear-gradient(transparent, rgba(0,0,0,0.85));
   --ytpres-border: rgba(255,255,255,0.08);
+  --ytpres-hover-bg: rgba(255,255,255,0.06);
+  --ytpres-hover-bg-strong: rgba(255,255,255,0.1);
+  --ytpres-panel-bg: rgba(28, 28, 28, 0.95);
+  --ytpres-panel-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  --ytpres-panel-bg-solid: rgba(20, 20, 20, 0.9);
+  --ytpres-overlay-bg: rgba(0, 0, 0, 0.8);
+  --ytpres-outline-bg: linear-gradient(135deg, rgba(10,10,10,0.92), rgba(20,20,20,0.88));
+  --ytpres-marker-color: rgba(255,255,255,0.25);
+  --ytpres-accent-tint: rgba(62,166,255,0.06);
+  --ytpres-accent-tint-strong: rgba(62,166,255,0.08);
+  --ytpres-card-bg: rgba(255,255,255,0.04);
+  --ytpres-card-hover-bg: rgba(255,255,255,0.08);
+  --ytpres-backdrop-filter: blur(20px) brightness(0.3);
+  --ytpres-backdrop-opacity: 0.6;
+  --ytpres-breathe-filter: blur(16px) brightness(0.25);
 }
 
 /* Light mode */
@@ -24,6 +39,21 @@ html:not([dark]) {
   --ytpres-dim: rgba(0,0,0,0.25);
   --ytpres-controls-bg: linear-gradient(transparent, rgba(255,255,255,0.92));
   --ytpres-border: rgba(0,0,0,0.08);
+  --ytpres-hover-bg: rgba(0,0,0,0.04);
+  --ytpres-hover-bg-strong: rgba(0,0,0,0.06);
+  --ytpres-panel-bg: rgba(255, 255, 255, 0.95);
+  --ytpres-panel-shadow: 0 4px 20px rgba(0,0,0,0.15);
+  --ytpres-panel-bg-solid: rgba(255, 255, 255, 0.95);
+  --ytpres-overlay-bg: rgba(255, 255, 255, 0.85);
+  --ytpres-outline-bg: linear-gradient(135deg, rgba(249,249,249,0.95), rgba(240,240,240,0.92));
+  --ytpres-marker-color: rgba(0,0,0,0.2);
+  --ytpres-accent-tint: rgba(6,95,212,0.06);
+  --ytpres-accent-tint-strong: rgba(6,95,212,0.08);
+  --ytpres-card-bg: rgba(0,0,0,0.03);
+  --ytpres-card-hover-bg: rgba(0,0,0,0.06);
+  --ytpres-backdrop-filter: blur(20px) brightness(0.7);
+  --ytpres-backdrop-opacity: 0.4;
+  --ytpres-breathe-filter: blur(16px) brightness(0.7);
 }
 
 /* ——— Read Button ——— */
@@ -166,6 +196,10 @@ html[dark] .ytpres-read-btn:hover {
   display: inline;
   /* will-change applied/removed by JS animation lifecycle */
 }
+/* Batched: hide words before staggered animation starts */
+.ytpres-word-hidden .ytpres-word { opacity: 0; }
+/* Batched: enable will-change during animation only */
+.ytpres-word-animating .ytpres-word { will-change: transform, opacity; }
 
 .ytpres-emphasis {
   font-weight: 700;
@@ -254,6 +288,7 @@ html[dark] .ytpres-read-btn:hover {
   opacity: 0;
   transition: opacity 0.3s ease;
   z-index: 10;
+  pointer-events: none;
 }
 .ytpres-controls-visible {
   opacity: 1;
@@ -264,6 +299,7 @@ html[dark] .ytpres-read-btn:hover {
   justify-content: space-between;
   gap: 12px;
   margin-top: 4px;
+  pointer-events: auto;
 }
 .ytpres-controls-left {
   display: flex;
@@ -303,6 +339,7 @@ html[dark] .ytpres-read-btn:hover {
   cursor: pointer;
   padding: 8px 0;
   position: relative;
+  pointer-events: auto;
 }
 .ytpres-progress-bar {
   height: 3px;
@@ -345,21 +382,17 @@ html[dark] .ytpres-read-btn:hover {
   bottom: 100%;
   right: 16px;
   margin-bottom: 8px;
-  background: rgba(28, 28, 28, 0.95);
+  background: var(--ytpres-panel-bg);
   border-radius: 12px;
   padding: 8px 0;
   min-width: 140px;
   backdrop-filter: blur(12px);
-  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  box-shadow: var(--ytpres-panel-shadow);
   opacity: 0;
   transform: translateY(8px) scale(0.96);
   pointer-events: none;
   transition: opacity 0.15s ease, transform 0.15s ease;
   z-index: 20;
-}
-html:not([dark]) .ytpres-speed-menu {
-  background: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
 }
 .ytpres-speed-menu-open {
   opacity: 1;
@@ -376,10 +409,7 @@ html:not([dark]) .ytpres-speed-menu {
   white-space: nowrap;
 }
 .ytpres-speed-menu-item:hover {
-  background: rgba(255,255,255,0.1);
-}
-html:not([dark]) .ytpres-speed-menu-item:hover {
-  background: rgba(0,0,0,0.06);
+  background: var(--ytpres-hover-bg-strong);
 }
 .ytpres-speed-menu-active {
   color: var(--ytpres-accent);
@@ -605,16 +635,13 @@ html:not([dark]) .ytpres-speed-menu-item:hover {
   z-index: 5;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(135deg, rgba(10,10,10,0.92), rgba(20,20,20,0.88));
+  background: var(--ytpres-outline-bg);
   backdrop-filter: blur(16px);
   border-right: 1px solid var(--ytpres-border);
   opacity: 0;
   transform: translateX(-100%);
   transition: opacity 0.3s ease, transform 0.3s ease;
   overflow: hidden;
-}
-html:not([dark]) .ytpres-outline {
-  background: linear-gradient(135deg, rgba(249,249,249,0.95), rgba(240,240,240,0.92));
 }
 .ytpres-outline-visible {
   opacity: 1;
@@ -640,17 +667,11 @@ html:not([dark]) .ytpres-outline {
   transition: background 0.15s, border-color 0.15s;
 }
 .ytpres-outline-item:hover {
-  background: rgba(255,255,255,0.06);
-}
-html:not([dark]) .ytpres-outline-item:hover {
-  background: rgba(0,0,0,0.04);
+  background: var(--ytpres-hover-bg);
 }
 .ytpres-outline-active {
   border-left-color: var(--ytpres-accent);
-  background: rgba(62,166,255,0.06);
-}
-html:not([dark]) .ytpres-outline-active {
-  background: rgba(6,95,212,0.06);
+  background: var(--ytpres-accent-tint);
 }
 .ytpres-outline-item-title {
   font-size: 13px;
@@ -678,12 +699,9 @@ html:not([dark]) .ytpres-outline-active {
   top: 0;
   bottom: 0;
   width: 2px;
-  background: rgba(255,255,255,0.25);
+  background: var(--ytpres-marker-color);
   pointer-events: none;
   z-index: 1;
-}
-html:not([dark]) .ytpres-section-marker {
-  background: rgba(0,0,0,0.2);
 }
 
 /* ——— Section Info (replaces time) ——— */
@@ -704,10 +722,10 @@ html:not([dark]) .ytpres-section-marker {
   transform: translateX(-50%);
   max-width: 280px;
   padding: 8px 12px;
-  background: rgba(28, 28, 28, 0.95);
+  background: var(--ytpres-panel-bg);
   backdrop-filter: blur(12px);
   border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  box-shadow: var(--ytpres-panel-shadow);
   font-size: 12px;
   line-height: 1.4;
   color: var(--ytpres-text);
@@ -716,10 +734,6 @@ html:not([dark]) .ytpres-section-marker {
   transition: opacity 0.15s ease;
   white-space: normal;
   z-index: 15;
-}
-html:not([dark]) .ytpres-progress-tooltip {
-  background: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
 }
 .ytpres-progress-tooltip strong {
   color: var(--ytpres-accent);
@@ -736,7 +750,7 @@ html:not([dark]) .ytpres-progress-tooltip {
   position: absolute;
   inset: 0;
   z-index: 25;
-  background: rgba(0, 0, 0, 0.8);
+  background: var(--ytpres-overlay-bg);
   backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
@@ -744,9 +758,6 @@ html:not([dark]) .ytpres-progress-tooltip {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.25s ease;
-}
-html:not([dark]) .ytpres-overview {
-  background: rgba(255, 255, 255, 0.85);
 }
 .ytpres-overview-visible {
   opacity: 1;
@@ -758,14 +769,11 @@ html:not([dark]) .ytpres-overview {
   max-height: 80%;
   display: flex;
   flex-direction: column;
-  background: rgba(20, 20, 20, 0.9);
+  background: var(--ytpres-panel-bg-solid);
   border-radius: 16px;
   border: 1px solid var(--ytpres-border);
   overflow: hidden;
   animation: ytpres-overview-enter 0.25s ease;
-}
-html:not([dark]) .ytpres-overview-inner {
-  background: rgba(255, 255, 255, 0.95);
 }
 @keyframes ytpres-overview-enter {
   from { opacity: 0; transform: scale(0.96); }
@@ -821,19 +829,13 @@ html:not([dark]) .ytpres-overview-inner {
   transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
 .ytpres-overview-thought:hover {
-  background: rgba(255,255,255,0.06);
+  background: var(--ytpres-hover-bg);
   color: var(--ytpres-text);
-}
-html:not([dark]) .ytpres-overview-thought:hover {
-  background: rgba(0,0,0,0.04);
 }
 .ytpres-overview-current {
   border-left-color: var(--ytpres-accent);
-  background: rgba(62,166,255,0.08);
+  background: var(--ytpres-accent-tint-strong);
   color: var(--ytpres-text);
-}
-html:not([dark]) .ytpres-overview-current {
-  background: rgba(6,95,212,0.08);
 }
 
 /* ——— Loading Backdrop (maxres thumbnail) ——— */
@@ -842,14 +844,10 @@ html:not([dark]) .ytpres-overview-current {
   inset: 0;
   background-size: cover;
   background-position: center;
-  filter: blur(20px) brightness(0.3);
-  opacity: 0.6;
+  filter: var(--ytpres-backdrop-filter);
+  opacity: var(--ytpres-backdrop-opacity);
   z-index: 0;
   transition: opacity 0.4s ease;
-}
-html:not([dark]) .ytpres-loading-backdrop {
-  filter: blur(20px) brightness(0.7);
-  opacity: 0.4;
 }
 .ytpres-loading {
   position: relative;
@@ -894,12 +892,9 @@ html:not([dark]) .ytpres-loading-backdrop {
   inset: 0;
   background-size: cover;
   background-position: center;
-  filter: blur(16px) brightness(0.25);
+  filter: var(--ytpres-breathe-filter);
   opacity: 0;
   animation: ytpres-breathe-thumb-fade 2.5s ease forwards;
-}
-html:not([dark]) .ytpres-breathe-thumb {
-  filter: blur(16px) brightness(0.7);
 }
 @keyframes ytpres-breathe-thumb-fade {
   0% { opacity: 0; }
@@ -974,18 +969,12 @@ html[dark] .ytpres-lang-select:hover {
   text-decoration: none;
   border-radius: 8px;
   overflow: hidden;
-  background: rgba(255,255,255,0.04);
+  background: var(--ytpres-card-bg);
   transition: background 0.15s, transform 0.15s;
 }
-html:not([dark]) .ytpres-readnext-card {
-  background: rgba(0,0,0,0.03);
-}
 .ytpres-readnext-card:hover {
-  background: rgba(255,255,255,0.08);
+  background: var(--ytpres-card-hover-bg);
   transform: translateY(-2px);
-}
-html:not([dark]) .ytpres-readnext-card:hover {
-  background: rgba(0,0,0,0.06);
 }
 .ytpres-readnext-thumb {
   width: 100%;

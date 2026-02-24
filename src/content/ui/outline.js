@@ -47,8 +47,8 @@ window.YTPresenter.Outline = class Outline {
       }
 
       item.addEventListener('click', () => {
-        const firstThought = this.timeline.thoughts.findIndex(t => t.sectionIndex === i);
-        if (firstThought >= 0) this.timeline.seekToIndex(firstThought);
+        const firstThought = this.timeline.sectionStarts[i];
+        if (firstThought != null) this.timeline.seekToIndex(firstThought);
       });
 
       list.appendChild(item);
@@ -62,11 +62,9 @@ window.YTPresenter.Outline = class Outline {
   _bindEvents() {
     this._onThoughtChange = ({ index }) => this._highlightSection(index);
     this._onSectionChange = ({ sectionIndex }) => this._setActive(sectionIndex);
-    this._onTick = ({ index }) => this._highlightSection(index);
 
     this.timeline.on('thoughtChange', this._onThoughtChange);
     this.timeline.on('sectionChange', this._onSectionChange);
-    this.timeline.on('tick', this._onTick);
   }
 
   _highlightSection(thoughtIndex) {
@@ -103,7 +101,6 @@ window.YTPresenter.Outline = class Outline {
     if (this.timeline) {
       this.timeline.off('thoughtChange', this._onThoughtChange);
       this.timeline.off('sectionChange', this._onSectionChange);
-      this.timeline.off('tick', this._onTick);
     }
 
     // Restore content padding

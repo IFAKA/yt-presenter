@@ -1,4 +1,4 @@
-import { checkHealth, checkModel, generate } from './ollama.js';
+import { checkHealth, checkModel, generate, pickBestModel } from './ollama.js';
 import { buildRestructureRequest, splitIntoSentenceChunks, buildChapterRequest, splitChapterIntoSubChunks } from './prompts.js';
 
 const DEFAULT_MODEL = 'qwen2.5:7b';
@@ -24,30 +24,8 @@ async function getModel() {
   }
 }
 
-function parseParamSize(str) {
-  if (!str) return 0;
-  const match = str.match(/([\d.]+)\s*([BMK])/i);
-  if (!match) return 0;
-  const num = parseFloat(match[1]);
-  const unit = match[2].toUpperCase();
-  if (unit === 'B') return num;
-  if (unit === 'M') return num / 1000;
-  if (unit === 'K') return num / 1000000;
-  return 0;
-}
-
-function pickBestModel(modelDetails) {
-  if (!modelDetails?.length) return null;
-  const ranked = modelDetails
-    .map(m => ({ ...m, paramNum: parseParamSize(m.paramSize) }))
-    .sort((a, b) => a.paramNum - b.paramNum);
-  // Largest model <= 9B, or smallest available if all > 9B
-  const sweet = ranked.filter(m => m.paramNum <= 9);
-  return sweet.length ? sweet[sweet.length - 1] : ranked[0];
-}
-
 // Full pipeline: single pass for short/normal videos, sentence-chunked for long ones
-async function processTranscript(transcript, sendProgress, durationSeconds = 0, videoContext = null) {
+async function processTranscript(transcript, sendProgress, durationSeconds = 0, videoContext = null, signal = null) {
   const model = await getModel();
 
   const health = await checkHealth();
@@ -70,7 +48,7 @@ async function processTranscript(transcript, sendProgress, durationSeconds = 0, 
     // Single pass — model sees the full transcript
     sendProgress({ stage: 'processing', total: 1, completed: 0 });
     const req = buildRestructureRequest(transcript, resolvedModel, videoContext);
-    const result = await generate(req);
+    const result = await generate({ ...req, signal });
     sendProgress({ stage: 'processing', total: 1, completed: 1 });
     return validateAndNormalize(result);
   }
@@ -81,9 +59,10 @@ async function processTranscript(transcript, sendProgress, durationSeconds = 0, 
 
   const results = [];
   for (let i = 0; i < chunks.length; i++) {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     // Only pass videoContext to the first chunk
     const req = buildRestructureRequest(chunks[i], resolvedModel, i === 0 ? videoContext : null);
-    const result = await generate(req);
+    const result = await generate({ ...req, signal });
     results.push(result);
     sendProgress({ stage: 'processing', total: chunks.length, completed: i + 1 });
   }
@@ -140,7 +119,7 @@ function validateAndNormalize(data) {
 }
 
 // Chapter-aware pipeline: process each chapter independently
-async function processWithChapters(chapters, sendProgress) {
+async function processWithChapters(chapters, sendProgress, signal = null) {
   const model = await getModel();
 
   const health = await checkHealth();
@@ -158,13 +137,14 @@ async function processWithChapters(chapters, sendProgress) {
 
   const sections = [];
   for (let i = 0; i < chapters.length; i++) {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     const chapter = chapters[i];
     const chunks = chapterChunks[i];
 
     if (chunks.length === 1) {
       // Single call for this chapter
       const req = buildChapterRequest(chapter.title, chunks[0], resolvedModel);
-      const result = await generate(req);
+      const result = await generate({ ...req, signal });
       completed++;
       sendProgress({ stage: 'processing', total: totalCalls, completed });
 
@@ -178,8 +158,9 @@ async function processWithChapters(chapters, sendProgress) {
       const allThoughts = [];
       let recap = '';
       for (const chunk of chunks) {
+        if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
         const req = buildChapterRequest(chapter.title, chunk, resolvedModel);
-        const result = await generate(req);
+        const result = await generate({ ...req, signal });
         completed++;
         sendProgress({ stage: 'processing', total: totalCalls, completed });
 
@@ -222,8 +203,8 @@ function mergeResults(results) {
   return merged;
 }
 
-// Message handler
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+// Message handler (short-lived requests only)
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'HEALTH_CHECK') {
     checkHealth().then(sendResponse);
     return true;
@@ -234,22 +215,50 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === 'PROCESS_TRANSCRIPT') {
-    const tabId = sender.tab?.id;
-    const sendProgressToTab = (progress) => {
-      if (tabId) {
-        try { chrome.tabs.sendMessage(tabId, { type: 'PROCESSING_PROGRESS', ...progress }); } catch {}
+  if (message.type === 'PICK_BEST_MODEL') {
+    checkHealth().then(health => {
+      if (!health.running || !health.modelDetails?.length) {
+        sendResponse({ model: null });
+      } else {
+        const best = pickBestModel(health.modelDetails);
+        sendResponse({ model: best?.name || null });
       }
+    });
+    return true;
+  }
+});
+
+// Port-based handler for long-running pipeline (auto-cancels on page unload)
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'ytpres-pipeline') return;
+
+  const controller = new AbortController();
+
+  port.onDisconnect.addListener(() => {
+    controller.abort();
+  });
+
+  port.onMessage.addListener((message) => {
+    if (message.type !== 'PROCESS_TRANSCRIPT') return;
+
+    const sendProgress = (progress) => {
+      try { port.postMessage({ type: 'PROCESSING_PROGRESS', ...progress }); } catch {}
     };
 
     const pipeline = message.chapters?.length
-      ? processWithChapters(message.chapters, sendProgressToTab).then(validateAndNormalize)
-      : processTranscript(message.transcript, sendProgressToTab, message.durationSeconds || 0, message.videoContext || null);
+      ? processWithChapters(message.chapters, sendProgress, controller.signal).then(validateAndNormalize)
+      : processTranscript(message.transcript, sendProgress, message.durationSeconds || 0, message.videoContext || null, controller.signal);
 
     pipeline
-      .then(result => sendResponse({ success: true, data: result }))
-      .catch(err => sendResponse({ success: false, error: err.message }));
-
-    return true;
-  }
+      .then(result => {
+        try { port.postMessage({ type: 'RESULT', success: true, data: result }); } catch {}
+      })
+      .catch(err => {
+        if (err.name === 'AbortError') {
+          console.log('[YTPresenter] Pipeline aborted (page navigated away)');
+          return;
+        }
+        try { port.postMessage({ type: 'RESULT', success: false, error: err.message }); } catch {}
+      });
+  });
 });
