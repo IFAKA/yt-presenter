@@ -199,6 +199,7 @@
           if (clickTimer) clearTimeout(clickTimer);
           clickTimer = setTimeout(() => {
             clickTimer = null;
+            if (!active || !timeline) return;
             // Ignore if text is selected
             const sel = window.getSelection();
             if (sel && sel.toString().trim().length > 0) return;
@@ -224,9 +225,12 @@
         if (cnt && section?.recap) {
           sectionTransitionBusy = true;
           window.YTPresenter.sectionTransitionBusy = true;
+          // Capture wpm now — timeline may be null by the time awaits resolve
+          const wpm = timeline.wpm;
           try {
             await YT.showBreathe(cnt, section.thumbnailUrl);
-            await YT.showRecap(cnt, section.recap, timeline.wpm, section.thumbnailUrl);
+            if (!active) return; // reader was closed during breathe
+            await YT.showRecap(cnt, section.recap, wpm, section.thumbnailUrl);
           } finally {
             sectionTransitionBusy = false;
             window.YTPresenter.sectionTransitionBusy = false;
@@ -268,6 +272,7 @@
     if (controls) { controls.destroy(); controls = null; }
     if (outline) { outline.destroy(); outline = null; }
     if (overview) { overview.destroy(); overview = null; }
+    window.YTPresenter.sectionTransitionBusy = false;
 
     const stage = YT.getStage();
     if (stage) YT.removeAmbient(stage);
