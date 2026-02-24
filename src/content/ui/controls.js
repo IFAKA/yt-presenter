@@ -276,6 +276,7 @@ window.YTPresenter.Controls = class Controls {
     menu.className = 'ytpres-export-menu';
     const options = [
       { label: 'HTML Slides', format: 'html', icon: '⬇' },
+      { label: 'PowerPoint (.pptx)', format: 'pptx', icon: '📊' },
       { label: 'Print / PDF', format: 'pdf', icon: '🖨' },
     ];
     options.forEach(({ label, format, icon }) => {
