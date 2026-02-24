@@ -37,7 +37,7 @@ function getTierDot(paramNum) {
   return '\u{1F7E0}';                      // orange circle
 }
 
-function populateModelDropdown(modelDetails, savedModel) {
+function populateModelDropdown(modelDetails, savedModel, onModelResolved) {
   const select = document.getElementById('model-select');
   select.innerHTML = '';
 
@@ -95,6 +95,7 @@ function populateModelDropdown(modelDetails, savedModel) {
     if (resp?.model) {
       select.value = resp.model;
       chrome.storage.local.set({ model: resp.model });
+      onModelResolved?.(resp.model);
     }
   });
 
@@ -118,7 +119,10 @@ async function checkStatus() {
     ollamaStatus.textContent = 'Connected';
 
     const saved = (await chrome.storage.local.get('model')).model;
-    const selectedModel = populateModelDropdown(health.modelDetails, saved);
+    const selectedModel = populateModelDropdown(health.modelDetails, saved, (resolvedModel) => {
+      modelDot.className = 'status-dot connected';
+      modelStatus.textContent = resolvedModel.split(':')[0];
+    });
 
     if (selectedModel) {
       modelDot.className = 'status-dot connected';
