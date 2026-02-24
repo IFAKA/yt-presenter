@@ -416,6 +416,49 @@ html[dark] .ytpres-read-btn:hover {
   font-weight: 600;
 }
 
+/* ——— Export Menu ——— */
+.ytpres-export-menu {
+  position: absolute;
+  bottom: 100%;
+  right: 48px; /* aligned near export button */
+  margin-bottom: 8px;
+  background: var(--ytpres-panel-bg);
+  border-radius: 12px;
+  padding: 8px 0;
+  min-width: 150px;
+  backdrop-filter: blur(12px);
+  box-shadow: var(--ytpres-panel-shadow);
+  opacity: 0;
+  transform: translateY(8px) scale(0.96);
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 20;
+}
+.ytpres-export-menu-open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+.ytpres-export-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--ytpres-text);
+  cursor: pointer;
+  transition: background 0.1s;
+  white-space: nowrap;
+}
+.ytpres-export-menu-item:hover {
+  background: var(--ytpres-hover-bg-strong);
+}
+.ytpres-export-menu-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
 .ytpres-savings {
   text-align: center;
   font-size: 11px;

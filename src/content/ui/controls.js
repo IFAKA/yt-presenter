@@ -48,6 +48,9 @@ window.YTPresenter.Controls = class Controls {
           <button class="ytpres-btn ytpres-btn-outline" title="Outline (O)">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>
           </button>
+          <button class="ytpres-btn ytpres-btn-export" title="Export">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+          </button>
           <button class="ytpres-btn ytpres-btn-close" title="Close (T)">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
           </button>
@@ -85,6 +88,14 @@ window.YTPresenter.Controls = class Controls {
     q('.ytpres-btn-close').addEventListener('click', () => this.callbacks.onClose?.());
     q('.ytpres-btn-outline').addEventListener('click', () => this.callbacks.onOutlineToggle?.());
 
+    this._exportBtn = q('.ytpres-btn-export');
+    this._exportMenu = this._createExportMenu();
+    this.el.appendChild(this._exportMenu);
+    this._exportBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._toggleExportMenu();
+    });
+
     this._speedBtn = q('.ytpres-btn-speed');
     this._speedMenu = this._createSpeedMenu();
     this.el.appendChild(this._speedMenu);
@@ -94,10 +105,13 @@ window.YTPresenter.Controls = class Controls {
       this._toggleSpeedMenu();
     });
 
-    // Close menu when clicking outside
+    // Close menus when clicking outside
     this._onDocClick = (e) => {
       if (!this._speedMenu.contains(e.target) && !this._speedBtn.contains(e.target)) {
         this._closeSpeedMenu();
+      }
+      if (!this._exportMenu.contains(e.target) && !this._exportBtn.contains(e.target)) {
+        this._closeExportMenu();
       }
     };
     document.addEventListener('click', this._onDocClick, true);
@@ -255,6 +269,35 @@ window.YTPresenter.Controls = class Controls {
     });
 
     return menu;
+  }
+
+  _createExportMenu() {
+    const menu = document.createElement('div');
+    menu.className = 'ytpres-export-menu';
+    const options = [
+      { label: 'HTML Slides', format: 'html', icon: '⬇' },
+      { label: 'Print / PDF', format: 'pdf', icon: '🖨' },
+    ];
+    options.forEach(({ label, format, icon }) => {
+      const item = document.createElement('div');
+      item.className = 'ytpres-export-menu-item';
+      item.innerHTML = `<span class="ytpres-export-menu-icon">${icon}</span>${label}`;
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._closeExportMenu();
+        this.callbacks.onExport?.(format);
+      });
+      menu.appendChild(item);
+    });
+    return menu;
+  }
+
+  _toggleExportMenu() {
+    this._exportMenu.classList.toggle('ytpres-export-menu-open');
+  }
+
+  _closeExportMenu() {
+    this._exportMenu.classList.remove('ytpres-export-menu-open');
   }
 
   _toggleSpeedMenu() {

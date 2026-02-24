@@ -165,6 +165,7 @@
         onModeChange: (mode) => animator.setMode(mode),
         getCurrentMode: () => animator.mode,
         onOutlineToggle: () => outline?.toggle(),
+        onExport: (format) => YT.exportPresentation(processedData, videoInfo, format),
       });
 
       outline = new YT.Outline(stage, timeline);

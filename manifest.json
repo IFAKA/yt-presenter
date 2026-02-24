@@ -38,6 +38,7 @@
         "src/content/engine/layout.js",
         "src/content/engine/timeline.js",
         "src/content/engine/animator.js",
+        "src/content/ui/export.js",
         "src/content/ui/controls.js",
         "src/content/ui/outline.js",
         "src/content/ui/overview.js",

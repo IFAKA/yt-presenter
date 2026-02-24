@@ -25,14 +25,27 @@ async function getModel() {
 }
 
 // Full pipeline: single pass for short/normal videos, sentence-chunked for long ones
+function makeTokenHandler(sendProgress, chunkIndex, totalChunks) {
+  let lastReported = 0;
+  return (tokenCount) => {
+    if (tokenCount - lastReported >= 50) {
+      lastReported = tokenCount;
+      const label = totalChunks > 1 ? `Generating chunk ${chunkIndex + 1}/${totalChunks} (${tokenCount.toLocaleString()} tokens)` : `Generating… (${tokenCount.toLocaleString()} tokens)`;
+      sendProgress({ stage: 'generating', message: label });
+    }
+  };
+}
+
 async function processTranscript(transcript, sendProgress, durationSeconds = 0, videoContext = null, signal = null) {
   const model = await getModel();
 
+  sendProgress({ stage: 'connecting', message: 'Connecting to Ollama…' });
   const health = await checkHealth();
   if (!health.running) {
     throw new Error('OLLAMA_NOT_RUNNING');
   }
 
+  sendProgress({ stage: 'model_check', message: `Loading ${model}…` });
   const modelCheck = await checkModel(model);
   if (!modelCheck.available) {
     throw new Error('MODEL_NOT_FOUND');
@@ -46,25 +59,25 @@ async function processTranscript(transcript, sendProgress, durationSeconds = 0, 
 
   if (useSinglePass) {
     // Single pass — model sees the full transcript
-    sendProgress({ stage: 'processing', total: 1, completed: 0 });
+    sendProgress({ stage: 'generating', message: 'Generating… (0 tokens)', total: 1, completed: 0 });
     const req = buildRestructureRequest(transcript, resolvedModel, videoContext);
-    const result = await generate({ ...req, signal });
-    sendProgress({ stage: 'processing', total: 1, completed: 1 });
+    const result = await generate({ ...req, signal, onToken: makeTokenHandler(sendProgress, 0, 1) });
+    sendProgress({ stage: 'generating', message: 'Finishing up…', total: 1, completed: 1 });
     return validateAndNormalize(result);
   }
 
   // Long transcript — split on sentence boundaries, process sequentially
   const chunks = splitIntoSentenceChunks(transcript);
-  sendProgress({ stage: 'processing', total: chunks.length, completed: 0 });
+  sendProgress({ stage: 'generating', message: `Processing 0/${chunks.length} chunks…`, total: chunks.length, completed: 0 });
 
   const results = [];
   for (let i = 0; i < chunks.length; i++) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     // Only pass videoContext to the first chunk
     const req = buildRestructureRequest(chunks[i], resolvedModel, i === 0 ? videoContext : null);
-    const result = await generate({ ...req, signal });
+    const result = await generate({ ...req, signal, onToken: makeTokenHandler(sendProgress, i, chunks.length) });
     results.push(result);
-    sendProgress({ stage: 'processing', total: chunks.length, completed: i + 1 });
+    sendProgress({ stage: 'generating', message: `Processed ${i + 1}/${chunks.length} chunks`, total: chunks.length, completed: i + 1 });
   }
 
   return validateAndNormalize(mergeResults(results));
@@ -122,9 +135,11 @@ function validateAndNormalize(data) {
 async function processWithChapters(chapters, sendProgress, signal = null) {
   const model = await getModel();
 
+  sendProgress({ stage: 'connecting', message: 'Connecting to Ollama…' });
   const health = await checkHealth();
   if (!health.running) throw new Error('OLLAMA_NOT_RUNNING');
 
+  sendProgress({ stage: 'model_check', message: `Loading ${model}…` });
   const modelCheck = await checkModel(model);
   if (!modelCheck.available) throw new Error('MODEL_NOT_FOUND');
   const resolvedModel = modelCheck.resolvedModel;
@@ -133,7 +148,7 @@ async function processWithChapters(chapters, sendProgress, signal = null) {
   const chapterChunks = chapters.map(ch => splitChapterIntoSubChunks(ch.text));
   const totalCalls = chapterChunks.reduce((sum, chunks) => sum + chunks.length, 0);
   let completed = 0;
-  sendProgress({ stage: 'processing', total: totalCalls, completed: 0 });
+  sendProgress({ stage: 'generating', message: `Processing 0/${totalCalls} chapters…`, total: totalCalls, completed: 0 });
 
   const sections = [];
   for (let i = 0; i < chapters.length; i++) {
@@ -144,9 +159,9 @@ async function processWithChapters(chapters, sendProgress, signal = null) {
     if (chunks.length === 1) {
       // Single call for this chapter
       const req = buildChapterRequest(chapter.title, chunks[0], resolvedModel);
-      const result = await generate({ ...req, signal });
+      const result = await generate({ ...req, signal, onToken: makeTokenHandler(sendProgress, completed, totalCalls) });
       completed++;
-      sendProgress({ stage: 'processing', total: totalCalls, completed });
+      sendProgress({ stage: 'generating', message: `Processed ${completed}/${totalCalls} chapters`, total: totalCalls, completed });
 
       sections.push({
         title: chapter.title,
@@ -160,9 +175,9 @@ async function processWithChapters(chapters, sendProgress, signal = null) {
       for (const chunk of chunks) {
         if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
         const req = buildChapterRequest(chapter.title, chunk, resolvedModel);
-        const result = await generate({ ...req, signal });
+        const result = await generate({ ...req, signal, onToken: makeTokenHandler(sendProgress, completed, totalCalls) });
         completed++;
-        sendProgress({ stage: 'processing', total: totalCalls, completed });
+        sendProgress({ stage: 'generating', message: `Processed ${completed}/${totalCalls} chapters`, total: totalCalls, completed });
 
         if (result.thoughts) allThoughts.push(...result.thoughts);
         if (result.recap) recap = result.recap;

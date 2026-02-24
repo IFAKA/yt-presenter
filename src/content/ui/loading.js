@@ -96,9 +96,18 @@ window.YTPresenter = window.YTPresenter || {};
       bar.style.width = `${pct}%`;
     }
 
-    if (statusText && progress.stage) {
-      const stageLabels = { structure: 'Analyzing structure', restructure: 'Restructuring prose' };
-      statusText.textContent = stageLabels[progress.stage] || 'Processing with AI';
+    if (statusText) {
+      if (progress.message) {
+        statusText.textContent = progress.message;
+      } else if (progress.stage) {
+        const stageLabels = {
+          connecting: 'Connecting to Ollama',
+          model_check: 'Loading model',
+          generating: 'Generating',
+          processing: 'Processing with AI',
+        };
+        statusText.textContent = stageLabels[progress.stage] || 'Processing with AI';
+      }
     }
   };
 

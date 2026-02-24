@@ -52,14 +52,16 @@ export async function checkModel(name) {
   return { available: !!match, resolvedModel: match || null, reason: match ? null : 'model_not_found', models: health.models };
 }
 
-export async function generate({ model, prompt, system, format = 'json', stream = false, signal }) {
+export async function generate({ model, prompt, system, format = 'json', signal, onToken }) {
   const timeoutSignal = AbortSignal.timeout(120000);
   const combinedSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+
+  const useStream = !!onToken;
 
   const res = await fetch(`${OLLAMA_BASE}/api/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, prompt, system, format, stream, options: { num_ctx: 16384 } }),
+    body: JSON.stringify({ model, prompt, system, format, stream: useStream, options: { num_ctx: 16384 } }),
     signal: combinedSignal,
   });
 
@@ -68,10 +70,42 @@ export async function generate({ model, prompt, system, format = 'json', stream 
     throw new Error(`Ollama error ${res.status}: ${text}`);
   }
 
-  const data = await res.json();
+  let fullResponse;
+
+  if (useStream) {
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let accumulated = '';
+    let tokenCount = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const obj = JSON.parse(line);
+          if (obj.response) {
+            accumulated += obj.response;
+            tokenCount++;
+            onToken(tokenCount, accumulated.length);
+          }
+        } catch {}
+      }
+    }
+    fullResponse = accumulated;
+  } else {
+    const data = await res.json();
+    fullResponse = typeof data.response === 'string' ? data.response : JSON.stringify(data.response);
+  }
+
   let parsed;
   try {
-    parsed = typeof data.response === 'string' ? JSON.parse(data.response) : data.response;
+    parsed = typeof fullResponse === 'string' ? JSON.parse(fullResponse) : fullResponse;
   } catch {
     throw new Error('Failed to parse Ollama JSON response');
   }
