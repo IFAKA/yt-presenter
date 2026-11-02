@@ -134,3 +134,11 @@ The extension runs in two Chrome content script worlds. The **MAIN world** has a
 One user-facing setting lives in `chrome.storage.local`:
 
 - **`wpm`** — reading speed in words per minute (default: 250, configurable from the popup)
+
+---
+
+## Support
+
+If this project is useful to you, you can support my work:
+
+[![Support me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/zfaka)
